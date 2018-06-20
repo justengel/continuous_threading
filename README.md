@@ -5,6 +5,13 @@ There are some problems with threads runing continuously in a loop. Calculation 
 which starves other threads. Another problem is if you don't exit an infinite loop in a thread it may keep running 
 after python has tried to exit. This library aims to solve those problems.
 
+This library provides 4 main thread utilities:
+  * Thread - threading with context manager support
+  * ContinuousThread - Run a function continuously in a loop (It is suggested that you make the thread sleep periodically with time.sleep(0.0001)).
+  * PausableThread - Thread that can run continuously and can be stopped and started again.
+  * OperationThread - Thread that will run a calculation in a separate thread with different data.
+
+
 ## Thread context manager
 This library turns threads into a context manager which automatically starts and stops threads.
 
