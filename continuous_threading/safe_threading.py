@@ -100,7 +100,7 @@ class Thread(threading.Thread):
             args = tuple()
         if kwargs is None:
             kwargs = dict()
-        super().__init__(target=target, name=name, args=args, kwargs=kwargs, daemon=daemon)
+        super(Thread, self).__init__(target=target, name=name, args=args, kwargs=kwargs, daemon=daemon)
 
         if not hasattr(self, '_args'):
             self._args = args
@@ -142,7 +142,7 @@ class Thread(threading.Thread):
 
         self.close()
         time.sleep(SMALL_SLEEP_VALUE)  # Give time for the run method close everything
-        super().join(timeout)
+        super(Thread, self).join(timeout)
 
         try:
             join_tmr.cancel()
@@ -185,7 +185,7 @@ class ContinuousThread(Thread):
     def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None):
         # Thread properties
         self.alive = threading.Event()  # If the thread is running
-        super().__init__(target=target, name=name, args=args, kwargs=kwargs, daemon=daemon)
+        super(ContinuousThread, self).__init__(target=target, name=name, args=args, kwargs=kwargs, daemon=daemon)
 
     def is_running(self):
         """Return if the serial port is connected and alive."""
@@ -198,7 +198,7 @@ class ContinuousThread(Thread):
         if not self._started.is_set():
             self.daemon = False  # Forces join to be called which closes the thread properly.
         self.alive.set()
-        super().start()
+        super(ContinuousThread, self).start()
     
     def stop(self):
         """Stop running the thread."""
@@ -226,7 +226,7 @@ class PausableThread(ContinuousThread):
 
     def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None):
         self.kill = threading.Event()  # Loop condition to exit and kill the thread
-        super().__init__(target=target, name=name, args=args, kwargs=kwargs, daemon=daemon)
+        super(PausableThread, self).__init__(target=target, name=name, args=args, kwargs=kwargs, daemon=daemon)
 
     def is_running(self):
         """Return if the serial port is connected and alive."""
@@ -241,7 +241,7 @@ class PausableThread(ContinuousThread):
 
         # If the thread has not been started then start it. Start can only run once
         if not self._started.is_set():
-            super().start()
+            super(PausableThread, self).start()
 
     def stop(self):
         """Stop running the thread. Use close or join to completely finish using the thread.
@@ -291,7 +291,7 @@ class OperationThread(PausableThread):
     def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None):
         self._operations = Queue()
         self.stop_processing = False
-        super().__init__(target=target, name=name, args=args, kwargs=kwargs, daemon=daemon)
+        super(OperationThread, self).__init__(target=target, name=name, args=args, kwargs=kwargs, daemon=daemon)
 
     def get_queue_size(self):
         """Return the operation Queue size."""
@@ -331,11 +331,11 @@ class OperationThread(PausableThread):
         self.alive.clear()  # The thread is no longer running
 
     def stop(self):
-        super().stop()
+        super(OperationThread, self).stop()
         self.pump_queue()
 
     def close(self):
-        super().close()
+        super(OperationThread, self).close()
         time.sleep(0.1)
         self.pump_queue()
 # end class OperationThread
