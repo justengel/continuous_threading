@@ -102,12 +102,12 @@ class Thread(threading.Thread):
             kwargs = dict()
         super(Thread, self).__init__(target=target, name=name, args=args, kwargs=kwargs, daemon=daemon)
 
+        # Should be created by __init__ (parent method).
         if not hasattr(self, '_args'):
             self._args = args
         if not hasattr(self, '_kwargs'):
             self._kwargs = kwargs.copy()
         if not hasattr(self, '_started'):
-            # Should be created by __init__ (parent method).
             self._started = threading.Event()
 
         if (not hasattr(self, "_target") or not self._target) and hasattr(self, "_run"):
@@ -124,7 +124,7 @@ class Thread(threading.Thread):
         pass
 
     def close(self):
-        """Close the thread."""
+        """Close the thread (clean up variables)."""
         self.stop()
 
     def _run(self, *args, **kwargs):
@@ -133,34 +133,40 @@ class Thread(threading.Thread):
     
     def join(self, timeout=None):
         """Properly close the thread."""
-        tmr_out = (timeout or 3) + 2
+        # Close warning
+        join_tmr = self._create_close_warning_timer(timeout)
 
+        try:
+            self.close()  # Cleanup function
+            time.sleep(SMALL_SLEEP_VALUE)  # Wait for the run method to exit a loop and close everything
+
+            # Join the thread
+            super(Thread, self).join(timeout)
+        finally:
+            try:
+                join_tmr.cancel()
+                join_tmr.join()
+            except AttributeError:
+                pass
+
+    def _create_close_warning_timer(self, timeout):
+        """Create and return a timer that will Warn the user that the thread did not close."""
+        # Close warning
         join_tmr = None
         if self.close_warning:
+            tmr_out = (timeout or 3) + 2 + SMALL_SLEEP_VALUE
             join_tmr = threading.Timer(tmr_out, self._warn_user)  # Indicate there is an error if not closed soon
             join_tmr.start()
 
-        self.close()
-        time.sleep(SMALL_SLEEP_VALUE)  # Give time for the run method close everything
-        super(Thread, self).join(timeout)
-
-        try:
-            join_tmr.cancel()
-            join_tmr.join()
-        except AttributeError:
-            pass
+        return join_tmr
 
     def _warn_user(self):
         """Method that raises a runtime error to warn the user that the thread did not close
         properly.
         """
-        raise RuntimeError("WARNING: The thread did not join properly!\n"
-                           "Consider making this a daemon thread or a loop is keeping the thread from joining. " +
-                           str(self))
-
-    def __call__(self):
-        """Call and return self. It makes it easier to use the "with" statement."""
-        return self
+        raise RuntimeError("WARNING: The thread '{0}' did not join properly!\n"
+                           "A loop may be keeping the thread from joining. "
+                           "Try overriding the close method to clean up the thread.".format(str(self)))
 
     def __enter__(self):
         """Enter statement for use of 'with' statement."""
@@ -195,10 +201,10 @@ class ContinuousThread(Thread):
 
     def start(self):
         """Start running the thread."""
+        self.alive.set()
         if not self._started.is_set():
             self.daemon = False  # Forces join to be called which closes the thread properly.
-        self.alive.set()
-        super(ContinuousThread, self).start()
+            super(ContinuousThread, self).start()
     
     def stop(self):
         """Stop running the thread."""
@@ -237,11 +243,7 @@ class PausableThread(ContinuousThread):
     def start(self):
         """Start running the thread."""
         # Resume the thread run method
-        self.alive.set()  # If in alive.wait then setting this flag will resume the thread
-
-        # If the thread has not been started then start it. Start can only run once
-        if not self._started.is_set():
-            super(PausableThread, self).start()
+        super(PausableThread, self).start()
 
     def stop(self):
         """Stop running the thread. Use close or join to completely finish using the thread.
@@ -331,10 +333,16 @@ class OperationThread(PausableThread):
         self.alive.clear()  # The thread is no longer running
 
     def stop(self):
+        """Stop running the thread. Use close or join to completely finish using the thread.
+        When Python exits it will call the thread join method to properly close the thread.
+        """
         super(OperationThread, self).stop()
         self.pump_queue()
 
     def close(self):
+        """Completely finish using the thread. When Python exits it will call the thread join
+        method to properly close the thread. It should not be necessary to call this method.
+        """
         super(OperationThread, self).close()
         time.sleep(0.1)
         self.pump_queue()
