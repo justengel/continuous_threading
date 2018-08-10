@@ -1,14 +1,18 @@
 # continuous_threading
+
+-----------------------
+
 This library provides several classes to help manage threads that run continuously.
 
 There are some problems with threads runing continuously in a loop. Calculation threads are greedy and keep running 
 which starves other threads. Another problem is if you don't exit an infinite loop in a thread it may keep running 
-after python has tried to exit. This library aims to solve those problems.
+after python has tried to exit. Daemon threads will close, but resources/variables may not be cleaned up properly. 
+Mostly, I needed to finish writing data to a file before the thread closed. This library aims to solve those problems.
 
 This library provides 4 main thread utilities:
   * Thread - threading with context manager support
-  * ContinuousThread - Run a function continuously in a loop (It is suggested that you make the thread sleep periodically with time.sleep(0.0001)).
-  * PausableThread - Thread that can run continuously and can be stopped and started again.
+  * ContinuousThread - Run a function continuously in a loop (It is suggested sleep is called periodically if no I/O)
+  * PausableThread - Continuous thread that can be stopped and started again.
   * OperationThread - Thread that will run a calculation in a separate thread with different data.
 
 

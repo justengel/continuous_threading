@@ -95,6 +95,7 @@ class Thread(threading.Thread):
     """
 
     def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None):
+        self.force_non_daemon = True
         self.close_warning = False
         if args is None:
             args = tuple()
@@ -114,9 +115,19 @@ class Thread(threading.Thread):
             self._target = self._run
 
     def start(self):
-        """Start running the thread."""
+        """Start running the thread.
+
+        Note:
+            The `force_non_daemon` attribute is initialized to True. This variable will set `daemon = False` when this
+            `start()` function is called. If you want to run a daemon thread set `force_non_daemon = False` and set
+            `daemon = True`. If you do this then the `close()` function is not guaranteed to be called.
+        """
         super(Thread, self).start()
         if not self._started.is_set():
+            # If daemone=False python forces join to be called which closes the thread properly.
+            self.daemon = self.force_non_daemon or self.daemon
+            if self.force_non_daemon:
+                self.daemon = False
             self._started.set()
 
     def stop(self):
@@ -202,10 +213,8 @@ class ContinuousThread(Thread):
     def start(self):
         """Start running the thread."""
         self.alive.set()
-        if not self._started.is_set():
-            self.daemon = False  # Forces join to be called which closes the thread properly.
-            super(ContinuousThread, self).start()
-    
+        super().start()
+
     def stop(self):
         """Stop running the thread."""
         self.alive.clear()
@@ -241,7 +250,13 @@ class PausableThread(ContinuousThread):
     is_active = is_running
 
     def start(self):
-        """Start running the thread."""
+        """Start running the thread.
+
+        Note:
+            The `force_non_daemon` attribute is initialized to True. This variable will set `daemon = False` when this
+            `start()` function is called. If you want to run a daemon thread set `force_non_daemon = False` and set
+            `daemon = True`. If you do this then the `close()` function is not guaranteed to be called.
+        """
         # Resume the thread run method
         super(PausableThread, self).start()
 
