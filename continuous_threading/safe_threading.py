@@ -77,7 +77,7 @@ import time
 from queue import Queue
 
 
-__all__ = ['Thread', 'ContinuousThread', 'PausableThread', 'OperationThread']
+__all__ = ['Thread', 'ContinuousThread', 'PausableThread', 'OperationThread', 'PeriodicThread']
 
 SMALL_SLEEP_VALUE = 0.0000000000001
 
@@ -362,3 +362,25 @@ class OperationThread(PausableThread):
         time.sleep(0.1)
         self.pump_queue()
 # end class OperationThread
+
+
+class PeriodicThread(ContinuousThread):
+    def __init__(self, interval, target=None, name=None, args=None, kwargs=None, daemon=None):
+        """Create a thread that will run a function periodically.
+
+        Args:
+            interval (int/float): How often to run a function in seconds.
+        """
+        super().__init__(target=target, name=name, args=args, kwargs=kwargs, daemon=daemon)
+        self.interval = interval
+
+    def run(self):
+        """The thread will loop through running the set _target method (default _run()). This
+        method can be paused and restarted.
+        """
+        while self.alive.is_set():
+            # Run the thread method
+            start = time.time()
+            self._target(*self._args, **self._kwargs)
+            duration = time.time() - start
+            time.sleep(max(0, self.interval - duration))

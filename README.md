@@ -14,6 +14,7 @@ This library provides 4 main thread utilities:
   * ContinuousThread - Run a function continuously in a loop (It is suggested sleep is called periodically if no I/O)
   * PausableThread - Continuous thread that can be stopped and started again.
   * OperationThread - Thread that will run a calculation in a separate thread with different data.
+  * PeriodicThread - Thread that runs a function periodically at a given interval.
 
 
 ## Thread context manager
@@ -168,4 +169,27 @@ th.add_data(5, 5)
 
 time.sleep(0.1)
 assert values == [2, 4, 6, 8, 10]
+```
+
+## PeriodicThread
+
+Run a function periodically.
+
+```python
+import time
+import continuous_threading
+
+
+time_list = []
+
+def save_time():
+    time_list.append(time.time())
+    
+th = continuous_threading.PeriodicThread(0.5, save_time)
+th.start()
+
+time.sleep(4)
+th.join()
+
+print(time_list)
 ```

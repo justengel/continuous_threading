@@ -5,4 +5,4 @@ from threading import Lock, RLock, Condition, Semaphore, BoundedSemaphore, Event
 
 from .timer_utils import start_timer, stop_timer
 from .threading_utils import make_thread_safe
-from .safe_threading import Thread, ContinuousThread, PausableThread, OperationThread
+from .safe_threading import Thread, ContinuousThread, PausableThread, OperationThread, PeriodicThread
