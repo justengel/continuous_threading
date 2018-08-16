@@ -122,12 +122,13 @@ class Thread(threading.Thread):
             `start()` function is called. If you want to run a daemon thread set `force_non_daemon = False` and set
             `daemon = True`. If you do this then the `close()` function is not guaranteed to be called.
         """
-        super(Thread, self).start()
         if not self._started.is_set():
             # If daemone=False python forces join to be called which closes the thread properly.
             self.daemon = self.force_non_daemon or self.daemon
             if self.force_non_daemon:
                 self.daemon = False
+
+            super(Thread, self).start()
             self._started.set()
 
     def stop(self):
