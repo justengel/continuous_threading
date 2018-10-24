@@ -72,9 +72,9 @@ Note:
     has a loop that exits on a condition the join will wait forever making it so your python program
     never exits. This also makes it so that atexit never calls all of it's registered exit functions.
 """
-import threading
 import time
 from queue import Queue
+from threading import Thread as BaseThread, Event, Timer
 
 
 __all__ = ['Thread', 'ContinuousThread', 'PausableThread', 'OperationThread', 'PeriodicThread']
@@ -82,7 +82,7 @@ __all__ = ['Thread', 'ContinuousThread', 'PausableThread', 'OperationThread', 'P
 SMALL_SLEEP_VALUE = 0.0000000000001
 
 
-class Thread(threading.Thread):
+class Thread(BaseThread):
     """Basic thread that contains context managers for use with the with statement.
 
     Note:
@@ -109,7 +109,7 @@ class Thread(threading.Thread):
         if not hasattr(self, '_kwargs'):
             self._kwargs = kwargs.copy()
         if not hasattr(self, '_started'):
-            self._started = threading.Event()
+            self._started = Event()
 
         if (not hasattr(self, "_target") or not self._target) and hasattr(self, "_run"):
             self._target = self._run
@@ -167,7 +167,7 @@ class Thread(threading.Thread):
         join_tmr = None
         if self.close_warning:
             tmr_out = (timeout or 3) + 2 + SMALL_SLEEP_VALUE
-            join_tmr = threading.Timer(tmr_out, self._warn_user)  # Indicate there is an error if not closed soon
+            join_tmr = Timer(tmr_out, self._warn_user)  # Indicate there is an error if not closed soon
             join_tmr.start()
 
         return join_tmr
@@ -202,7 +202,7 @@ class ContinuousThread(Thread):
     """
     def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None):
         # Thread properties
-        self.alive = threading.Event()  # If the thread is running
+        self.alive = Event()  # If the thread is running
         super(ContinuousThread, self).__init__(target=target, name=name, args=args, kwargs=kwargs, daemon=daemon)
 
     def is_running(self):
@@ -241,7 +241,7 @@ class PausableThread(ContinuousThread):
     """
 
     def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None):
-        self.kill = threading.Event()  # Loop condition to exit and kill the thread
+        self.kill = Event()  # Loop condition to exit and kill the thread
         super(PausableThread, self).__init__(target=target, name=name, args=args, kwargs=kwargs, daemon=daemon)
 
     def is_running(self):

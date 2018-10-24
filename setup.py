@@ -43,7 +43,7 @@ requirements = parse_requirements('requirements.txt')
 
 if __name__ == "__main__":
     setup(name="continuous_threading",
-          version="1.0.4",
+          version="1.0.5",
           description="Library to help manage threads that run continuously for a long time.",
           url="https://github.com/justengel/continuous_threading",
           download_url="https://github.com/justengel/continuous_threading/archive/v1.0.4.tar.gz",
