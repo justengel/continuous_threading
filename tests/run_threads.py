@@ -4,6 +4,7 @@ Trying to find out the best way to clear variables when a thread exits.
 CONCLUSION:
     The best option seems to force a non-daemon thread and override the join method to call a clean up function.
 """
+from __future__ import print_function
 import threading
 
 
@@ -36,12 +37,12 @@ def run_custom_thread():
     class Thread(threading.Thread):
         def __init__(self, *args, **kwargs):
             self.alive_event = threading.Event()
-            super().__init__(*args, **kwargs)
+            super(Thread, self).__init__(*args, **kwargs)
 
         def join(self, *args, **kwargs):
             print('here')
-            alive_event.clear()
-            super().join(*args, **kwargs)
+            self.alive_event.clear()
+            super(Thread, self).join(*args, **kwargs)
 
     alive_event = threading.Event()
     alive_event.set()
@@ -59,7 +60,7 @@ def run_custom_thread_bootstrap():
     class Thread(threading.Thread):
         def __init__(self, *args, **kwargs):
             self.alive_event = threading.Event()
-            super().__init__(*args, **kwargs)
+            super(Thread, self).__init__(*args, **kwargs)
 
         def _bootstrap_inner(self):
             print('in bootstrap')
@@ -147,11 +148,11 @@ def run_custom_thread_bootstrap_condensed():
     class Thread(threading.Thread):
         def __init__(self, *args, **kwargs):
             self.alive_event = threading.Event()
-            super().__init__(*args, **kwargs)
+            super(Thread, self).__init__(*args, **kwargs)
 
         def _bootstrap_inner(self):
             try:
-                super()._bootstrap_inner()
+                super(Thread, self)._bootstrap_inner()
             finally:
                 self.close()
 

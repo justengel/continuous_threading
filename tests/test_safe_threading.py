@@ -17,7 +17,7 @@ def test_thread():
     # Test class based approach
     class Th(continuous_threading.Thread):
         def __init__(self):
-            super().__init__()
+            super(Th, self).__init__()
 
             self.h = False
 
@@ -56,7 +56,7 @@ def test_continuous_thread():
     # Test class based approach
     class Th(continuous_threading.ContinuousThread):
         def __init__(self):
-            super().__init__()
+            super(Th, self).__init__()
             self.counter = 0
 
         def _run(self, *args, **kwargs):
@@ -96,7 +96,7 @@ def test_pausable_thread():
     # Test class based approach
     class Th(continuous_threading.PausableThread):
         def __init__(self):
-            super().__init__()
+            super(Th, self).__init__()
             self.counter = 0
 
         def _run(self, *args, **kwargs):
@@ -145,7 +145,7 @@ def test_operation_thread():
     # Test the class based approach
     class Th(continuous_threading.OperationThread):
         def __init__(self):
-            super().__init__()
+            super(Th, self).__init__()
 
             self.values = []
 

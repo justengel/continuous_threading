@@ -15,7 +15,7 @@ def test_thread():
 def test_continuous():
     class CountingThread(continuous_threading.ContinuousThread):
         def __init__(self):
-            super().__init__()
+            super(CountingThread, self).__init__()
             self.counter = 0
 
         def _run(self):
@@ -30,7 +30,7 @@ def test_continuous():
 def test_pausable():
     class PausableCountingThread(continuous_threading.PausableThread):
         def __init__(self):
-            super().__init__()
+            super(PausableCountingThread, self).__init__()
             self.counter = 0
 
         def _run(self):
@@ -49,7 +49,7 @@ def test_pausable():
 def test_operation():
     class SetValueThread(continuous_threading.OperationThread):
         def __init__(self):
-            super().__init__()
+            super(SetValueThread, self).__init__()
             self.value = 0
 
         def _run(self, data, *args, **kwargs):

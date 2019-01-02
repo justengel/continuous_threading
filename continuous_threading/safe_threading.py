@@ -72,14 +72,21 @@ Note:
     has a loop that exits on a condition the join will wait forever making it so your python program
     never exits. This also makes it so that atexit never calls all of it's registered exit functions.
 """
+import sys
 import time
-from queue import Queue
 from threading import Thread as BaseThread, Event, Timer
 
+try:
+    from queue import Queue, Empty
+except ImportError:
+    from Queue import Queue, Empty
 
-__all__ = ['Thread', 'ContinuousThread', 'PausableThread', 'OperationThread', 'PeriodicThread']
+
+__all__ = ['Queue', 'Empty', 'Thread', 'ContinuousThread', 'PausableThread', 'OperationThread', 'PeriodicThread']
+
 
 SMALL_SLEEP_VALUE = 0.0000000000001
+is_py27 = sys.version_info < (3, 0)
 
 
 class Thread(BaseThread):
@@ -101,17 +108,21 @@ class Thread(BaseThread):
             args = tuple()
         if kwargs is None:
             kwargs = dict()
-        super(Thread, self).__init__(target=target, name=name, args=args, kwargs=kwargs, daemon=daemon)
+        super(Thread, self).__init__(target=target, name=name, args=args, kwargs=kwargs)
 
-        # Should be created by __init__ (parent method).
-        if not hasattr(self, '_args'):
-            self._args = args
-        if not hasattr(self, '_kwargs'):
-            self._kwargs = kwargs.copy()
-        if not hasattr(self, '_started'):
-            self._started = Event()
+        # Check the daemon argument
+        if daemon is not None:
+            self.daemon = daemon
 
-        if (not hasattr(self, "_target") or not self._target) and hasattr(self, "_run"):
+        if is_py27:
+            self._args = self.__args
+            self._kwargs = self.__kwargs
+            self._started = self.__started
+            self._target = self.__target
+
+        if self._target is None and hasattr(self, '_run'):
+            if is_py27:
+                self.__target = self._run
             self._target = self._run
 
     def start(self):
@@ -129,7 +140,6 @@ class Thread(BaseThread):
                 self.daemon = False
 
             super(Thread, self).start()
-            self._started.set()
 
     def stop(self):
         """Stop the thread."""
@@ -214,7 +224,7 @@ class ContinuousThread(Thread):
     def start(self):
         """Start running the thread."""
         self.alive.set()
-        super().start()
+        super(ContinuousThread, self).start()
 
     def stop(self):
         """Stop running the thread."""
@@ -372,7 +382,7 @@ class PeriodicThread(ContinuousThread):
         Args:
             interval (int/float): How often to run a function in seconds.
         """
-        super().__init__(target=target, name=name, args=args, kwargs=kwargs, daemon=daemon)
+        super(PeriodicThread, self).__init__(target=target, name=name, args=args, kwargs=kwargs, daemon=daemon)
         self.interval = interval
 
     def run(self):
@@ -383,5 +393,7 @@ class PeriodicThread(ContinuousThread):
             # Run the thread method
             start = time.time()
             self._target(*self._args, **self._kwargs)
-            duration = time.time() - start
-            time.sleep(max(0, self.interval - duration))
+            try:
+                time.sleep(self.interval - (time.time() - start))
+            except ValueError:
+                pass  # sleep time less than 0
