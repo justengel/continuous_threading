@@ -307,14 +307,12 @@ class PausableThread(ContinuousThread):
 # end class PausableThread
 
 
-class OperationThread(PausableThread):
+class OperationThread(ContinuousThread):
     """This thread class is for running a calculation over and over, but with different data.
     
     Set the target function to be the operation that runs. Call add_data to run the calculation on that piece of data.
     Data must be the first argument of the target function.
     """
-
-    PUMP_QUEUE_DATA = '__PUMP_QUEUE__'
 
     def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None):
         self._operations = Queue()
@@ -325,53 +323,30 @@ class OperationThread(PausableThread):
         """Return the operation Queue size."""
         return self._operations.qsize()
 
-    def add_data(self, data, *args, **kwargs):
+    def add_data(self, *args, **kwargs):
         """Add data to the operation queue to process."""
-        self._operations.put([data, args, kwargs])
         self.start()
-
-    def pump_queue(self):
-        """Unblock the queue. The _operations queue may be blocking on the `get()` function. This function puts dummy
-        data into the queue so it exits the `get()` command. The dummy data is ignored.
-        """
-        self.add_data(self.PUMP_QUEUE_DATA)
+        self._operations.put([args, kwargs])
 
     def run(self):
         """The thread will loop through running the set _target method (default _run()). This 
         method can be paused and restarted.
         """
-        while not self.kill.is_set():
-            self.alive.wait()  # If alive is set then it does not wait according to docs.
-            if self.kill.is_set():
-                break
+        while self.alive.is_set():
+            try:
+                # Wait for data and other arguments
+                args, kwargs = self._operations.get(timeout=1)
 
-            # Wait for data and other arguments
-            data, args, kwargs = self._operations.get()
-
-            # Check if this data should be executed
-            if not self.stop_processing and data != self.PUMP_QUEUE_DATA:
-                # Run the data through the target function
-                args = args or self._args
-                kwargs = kwargs or self._kwargs
-                self._target(data, *args, **kwargs)
-        # end
+                # Check if this data should be executed
+                if not self.stop_processing:
+                    # Run the data through the target function
+                    args = args or self._args
+                    kwargs = kwargs or self._kwargs
+                    self._target(*args, **kwargs)
+            except Empty:
+                continue
 
         self.alive.clear()  # The thread is no longer running
-
-    def stop(self):
-        """Stop running the thread. Use close or join to completely finish using the thread.
-        When Python exits it will call the thread join method to properly close the thread.
-        """
-        super(OperationThread, self).stop()
-        self.pump_queue()
-
-    def close(self):
-        """Completely finish using the thread. When Python exits it will call the thread join
-        method to properly close the thread. It should not be necessary to call this method.
-        """
-        super(OperationThread, self).close()
-        time.sleep(0.1)
-        self.pump_queue()
 # end class OperationThread
 
 
