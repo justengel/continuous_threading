@@ -26,7 +26,7 @@ def get_meta(filename):
 
 if __name__ == "__main__":
     # Variables
-    meta = get_meta('continuous_threading/__version__.py')
+    meta = get_meta('continuous_threading/__meta__.py')
     name = meta['name']
     version = meta['version']
     description = meta['description']
@@ -48,7 +48,7 @@ if __name__ == "__main__":
     setup(name=name,
           version=version,
           description=description,
-          long_description=read('README.md'),
+          long_description=read('README.rst'),
           keywords=keywords,
           url=url,
           download_url=''.join((url, '/archive/v', version, '.tar.gz')),

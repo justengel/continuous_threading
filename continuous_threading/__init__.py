@@ -1,3 +1,5 @@
+from .__meta__ import version as __version__
+
 from collections import deque
 # Required threading classes
 from threading import Thread as BaseThread, Event, Timer
