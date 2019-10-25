@@ -69,18 +69,25 @@ def mark_task_done(que):
 
 class Process(mp.Process):
     """Run a function in a separate process."""
-    def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None):
+    def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None, group=None):
+        """Initialize the new process object.
+
+        Args:
+            target (object)[None]: Target functions to run in a separate process.
+            name (str)[None]: Name of the new process.
+            args (tuple)[None]: Default positional arguments to pass into the given target function.
+            kwargs (dict)[None]: Default keyword arguments to pass into the given target function.
+            daemon (bool)[None]: If this process should be a daemon process. This is automatically forced to be False.
+                Non-daemon process/threads call join when python exits.
+            group (object)[None]: Not used in python multiprocessing at this time.
+        """
         self.force_non_daemon = True
         if args is None:
             args = tuple()
         if kwargs is None:
             kwargs = {}
         self._started = mp.Event()
-        super(Process, self).__init__(target=target, name=name, args=args, kwargs=kwargs)
-
-        # Check the daemon argument
-        if daemon is not None:
-            self.daemon = daemon
+        super(Process, self).__init__(target=target, name=name, args=args, kwargs=kwargs, daemon=daemon, group=group)
 
         if self._target is None and hasattr(self, '_run'):
             self._target = self._run
@@ -152,10 +159,22 @@ class ContinuousProcess(Process):
     and over again give a target function or override the '_run' method. It is not recommended to override the normal
     'run' method.
     """
-    def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None):
+    def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None, group=None):
+        """Initialize the new process object.
+
+        Args:
+            target (object)[None]: Target functions to run in a separate process.
+            name (str)[None]: Name of the new process.
+            args (tuple)[None]: Default positional arguments to pass into the given target function.
+            kwargs (dict)[None]: Default keyword arguments to pass into the given target function.
+            daemon (bool)[None]: If this process should be a daemon process. This is automatically forced to be False.
+                Non-daemon process/threads call join when python exits.
+            group (object)[None]: Not used in python multiprocessing at this time.
+        """
         # Thread properties
         self.alive = mp.Event()  # If the thread is running
-        super(ContinuousProcess, self).__init__(target=target, name=name, args=args, kwargs=kwargs, daemon=daemon)
+        super(ContinuousProcess, self).__init__(target=target, name=name, args=args, kwargs=kwargs,
+                                                daemon=daemon, group=group)
 
     def is_running(self):
         """Return if the serial port is connected and alive."""
@@ -197,9 +216,21 @@ class PausableProcess(ContinuousProcess):
     normal 'run' method.
     """
 
-    def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None):
+    def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None, group=None):
+        """Initialize the new process object.
+
+        Args:
+            target (object)[None]: Target functions to run in a separate process.
+            name (str)[None]: Name of the new process.
+            args (tuple)[None]: Default positional arguments to pass into the given target function.
+            kwargs (dict)[None]: Default keyword arguments to pass into the given target function.
+            daemon (bool)[None]: If this process should be a daemon process. This is automatically forced to be False.
+                Non-daemon process/threads call join when python exits.
+            group (object)[None]: Not used in python multiprocessing at this time.
+        """
         self.kill = mp.Event()  # Loop condition to exit and kill the thread
-        super(PausableProcess, self).__init__(target=target, name=name, args=args, kwargs=kwargs, daemon=daemon)
+        super(PausableProcess, self).__init__(target=target, name=name, args=args, kwargs=kwargs,
+                                              daemon=daemon, group=group)
 
     def is_running(self):
         """Return if the serial port is connected and alive."""
@@ -259,14 +290,22 @@ class PausableProcess(ContinuousProcess):
 
 class PeriodicProcess(ContinuousProcess):
     """This process class is for running a function continuously at a given interval."""
-    def __init__(self, interval, target=None, name=None, args=None, kwargs=None, daemon=None):
-        """Create a thread that will run a function periodically.
+    def __init__(self, interval, target=None, name=None, args=None, kwargs=None, daemon=None, group=None):
+        """Initialize the new process object.
 
         Args:
             interval (int/float): How often to run a function in seconds.
+            target (object)[None]: Target functions to run in a separate process.
+            name (str)[None]: Name of the new process.
+            args (tuple)[None]: Default positional arguments to pass into the given target function.
+            kwargs (dict)[None]: Default keyword arguments to pass into the given target function.
+            daemon (bool)[None]: If this process should be a daemon process. This is automatically forced to be False.
+                Non-daemon process/threads call join when python exits.
+            group (object)[None]: Not used in python multiprocessing at this time.
         """
         self.interval = interval
-        super(PeriodicProcess, self).__init__(target=target, name=name, args=args, kwargs=kwargs, daemon=daemon)
+        super(PeriodicProcess, self).__init__(target=target, name=name, args=args, kwargs=kwargs,
+                                              daemon=daemon, group=group)
 
     def run(self):
         """The thread will loop through running the set _target method (default _run()). This
@@ -290,11 +329,23 @@ class OperationProcess(ContinuousProcess):
     Set the target function to be the operation that runs. Call add_data to run the calculation on that piece of data.
     """
 
-    def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None):
+    def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None, group=None):
+        """Initialize the new process object.
+
+        Args:
+            target (object)[None]: Target functions to run in a separate process.
+            name (str)[None]: Name of the new process.
+            args (tuple)[None]: Default positional arguments to pass into the given target function.
+            kwargs (dict)[None]: Default keyword arguments to pass into the given target function.
+            daemon (bool)[None]: If this process should be a daemon process. This is automatically forced to be False.
+                Non-daemon process/threads call join when python exits.
+            group (object)[None]: Not used in python multiprocessing at this time.
+        """
         self._operations = mp.Queue()
         self._stop_processing = mp.Event()
         self._timeout = 2  # Timeout in seconds
-        super(OperationProcess, self).__init__(target=target, name=name, args=args, kwargs=kwargs, daemon=daemon)
+        super(OperationProcess, self).__init__(target=target, name=name, args=args, kwargs=kwargs,
+                                               daemon=daemon, group=group)
 
     @property
     def stop_processing(self):
@@ -423,11 +474,23 @@ class CommandProcess(ContinuousProcess):
     ProcessCommand = ProcessCommand
     ExecCommand = ExecCommand
 
-    def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None):
+    def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None, group=None):
+        """Initialize the new process object.
+
+        Args:
+            target (object)[None]: Target object to run functions with in a separate process.
+            name (str)[None]: Name of the new process.
+            args (tuple)[None]: Unused in this class
+            kwargs (dict)[None]: Unused in this class
+            daemon (bool)[None]: If this process should be a daemon process. This is automatically forced to be False.
+                Non-daemon process/threads call join when python exits.
+            group (object)[None]: Not used in python multiprocessing at this time.
+        """
         self._obj_cache = {}
         self._cmd_queue = mp.Queue()
         self._timeout = 2  # Timeout in seconds
-        super(CommandProcess, self).__init__(target=None, name=name, args=args, kwargs=kwargs, daemon=daemon)
+        super(CommandProcess, self).__init__(target=None, name=name, args=args, kwargs=kwargs,
+                                             daemon=daemon, group=group)
 
         # Manually set the target/object to trigger the cache.
         if target is not None:
