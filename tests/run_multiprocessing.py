@@ -184,7 +184,7 @@ def run_command(test_join=True):
     obj2 = MyObj()
 
     proc = CommandProcess(target=obj1)
-    proc.daemon = True
+    proc.daemon = True  # This is forced to be False on start (Use force_non_daemon with this if you want it daemon).
     proc.start()
 
     # Send a command obj1
