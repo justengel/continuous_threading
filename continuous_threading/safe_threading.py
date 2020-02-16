@@ -364,11 +364,12 @@ class PeriodicThread(ContinuousThread):
         """The thread will loop through running the set _target method (default _run()). This
         method can be paused and restarted.
         """
+        start = time.time()
         while self.alive.is_set():
             # Run the thread method
-            start = time.time()
             self._target(*self._args, **self._kwargs)
             try:
                 time.sleep(self.interval - (time.time() - start))
             except ValueError:
                 pass  # sleep time less than 0
+            start = time.time()
