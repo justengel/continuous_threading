@@ -7,7 +7,7 @@ See Also:
 """
 import os
 import glob
-from setuptools import setup, Extension
+from setuptools import setup, Extension, find_packages
 
 
 def read(fname):
@@ -34,16 +34,16 @@ if __name__ == "__main__":
     author = meta['author']
     author_email = meta['author_email']
     keywords = 'threading continuous pausable'
-    packages = ['continuous_threading']
+    packages = find_packages(exclude=('tests', 'bin', 'dist', 'build'))
 
     # Extensions
-    extensions = []
-    # module1 = Extension('libname',
-    #                     # define_macros=[('MAJOR_VERSION', '1')],
-    #                     # extra_compile_args=['-std=c99'],
-    #                     sources=['file.c', 'dir/file.c'],
-    #                     include_dirs=['./dir'])
-    # extensions.append(module1)
+    extensions = [
+        # Extension('libname',
+        #           # define_macros=[('MAJOR_VERSION', '1')],
+        #           # extra_compile_args=['-std=c99'],
+        #           sources=['file.c', 'dir/file.c'],
+        #           include_dirs=['./dir'])
+        ]
 
     setup(name=name,
           version=version,
