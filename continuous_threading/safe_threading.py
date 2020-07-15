@@ -74,7 +74,7 @@ Note:
 """
 import sys
 import time
-from threading import Thread as BaseThread, Event, Timer
+from threading import Thread as BaseThread, Event, Timer, enumerate
 
 try:
     from queue import Queue, Empty
@@ -82,11 +82,50 @@ except ImportError:
     from Queue import Queue, Empty
 
 
-__all__ = ['Queue', 'Empty', 'Thread', 'ContinuousThread', 'PausableThread', 'OperationThread', 'PeriodicThread']
+__all__ = ['Queue', 'Empty', 'Thread', 'ContinuousThread', 'PausableThread', 'OperationThread', 'PeriodicThread',
+           'shutdown']
 
 
 SMALL_SLEEP_VALUE = 0.0000000000001
 is_py27 = sys.version_info < (3, 0)
+
+
+def shutdown(timeout=None):
+    """Python's threading._shutdown is no longer called or hangs before exit.
+    This library depends on that function. That function found all of the non-daemon threads and
+    called the join method. This threading library was built around that function. This function
+    calls join(0) on all of the non-daemon threads to ensure cleanup from every thread.
+
+    You may want to put this at the end of your code. Atexit will not work for this.
+
+    I did not have a problem with Python 3.4. I noticed this issue in Python 3.8. I do not know
+    when or why this stopped working.
+
+    .. code-block :: python
+
+        import time
+        import continuous_threading
+
+        def do_something():
+            print('hello')
+            time.sleep(1)
+
+        th = continuous_threading.PausableThread(target=do_something)
+        th.start()
+
+        time.sleep(10)
+
+        continuous_threading.shutdown()
+
+    Args:
+        timeout (int/float)[None]: Timeout argument to pass into every thread's join method.
+    """
+    for th in enumerate():
+        try:
+            if th.is_alive() and not th.isDaemon():
+                th.join(timeout)
+        except:
+            pass
 
 
 class Thread(BaseThread):
@@ -133,9 +172,9 @@ class Thread(BaseThread):
             `start()` function is called. If you want to run a daemon thread set `force_non_daemon = False` and set
             `daemon = True`. If you do this then the `close()` function is not guaranteed to be called.
         """
+        global SHUTDOWN_REGISTERED
         if not self._started.is_set():
             # If daemone=False python forces join to be called which closes the thread properly.
-            self.daemon = self.force_non_daemon or self.daemon
             if self.force_non_daemon:
                 self.daemon = False
 
@@ -155,10 +194,10 @@ class Thread(BaseThread):
     
     def join(self, timeout=None):
         """Properly close the thread."""
-        # Close warning
-        join_tmr = self._create_close_warning_timer(timeout)
-
         try:
+            # Close warning
+            join_tmr = self._create_close_warning_timer(timeout)
+
             self.close()  # Cleanup function
             time.sleep(SMALL_SLEEP_VALUE)  # Wait for the run method to exit a loop and close everything
 
@@ -170,6 +209,13 @@ class Thread(BaseThread):
                 join_tmr.join()
             except AttributeError:
                 pass
+
+    def _stop(self):
+        """New in python to help close threads?"""
+        try:
+            self.join()
+        except:
+            pass
 
     def _create_close_warning_timer(self, timeout):
         """Create and return a timer that will Warn the user that the thread did not close."""

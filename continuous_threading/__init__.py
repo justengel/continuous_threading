@@ -17,7 +17,8 @@ except ImportError:
 
 from .timer_utils import start_timer, stop_timer
 from .threading_utils import make_thread_safe
-from .safe_threading import Queue, Empty, Thread, ContinuousThread, PausableThread, OperationThread, PeriodicThread
+from .safe_threading import Queue, Empty, Thread, ContinuousThread, PausableThread, OperationThread, PeriodicThread, \
+    shutdown
 
 try:
     from .safe_multiprocessing import ProcessError, MpEvent, MpQueue, MpJoinableQueue, MpSimpleQueue, \

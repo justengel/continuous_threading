@@ -10,11 +10,36 @@ after python has tried to exit. Daemon threads will close, but resources/variabl
 Mostly, I needed to finish writing data to a file before the thread closed. This library aims to solve those problems.
 
 This library provides 4 main thread utilities:
+  * shutdown - Call `join(timeout)` on every non-daemon thread that is active.
   * Thread - threading with context manager support
   * ContinuousThread - Run a function continuously in a loop (It is suggested sleep is called periodically if no I/O)
   * PausableThread - Continuous thread that can be stopped and started again.
   * OperationThread - Thread that will run a calculation in a separate thread with different data.
   * PeriodicThread - Thread that runs a function periodically at a given interval.
+
+
+Shutdown Update
+---------------
+
+Noticed issue with Python 3.8 on Windows. Python's threading._shutdown method is never called or hangs before exit.
+This library is dependent on that function. I added a shutdown method that can be added to the end of your code.
+This will ensure that `join()` is called on all of the non-daemon threads.
+
+.. code-block :: python
+
+    import time
+    import continuous_threading
+
+    def do_something():
+        print('hello')
+        time.sleep(1)
+
+    th = continuous_threading.PausableThread(target=do_something)
+    th.start()
+
+    time.sleep(10)
+
+    continuous_threading.shutdown()
 
 
 Thread context manager
