@@ -210,13 +210,6 @@ class Thread(BaseThread):
             except AttributeError:
                 pass
 
-    def _stop(self):
-        """New in python to help close threads?"""
-        try:
-            self.join()
-        except:
-            pass
-
     def _create_close_warning_timer(self, timeout):
         """Create and return a timer that will Warn the user that the thread did not close."""
         # Close warning
