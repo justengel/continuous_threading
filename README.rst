@@ -25,6 +25,11 @@ Noticed issue with Python 3.8 on Windows. Python's threading._shutdown method is
 This library is dependent on that function. I added a shutdown method that can be added to the end of your code.
 This will ensure that `join()` is called on all of the non-daemon threads.
 
+This issue may have been caused by me adding a `_stop` method to the Thread class. Python's threading library may
+require the use of the `_stop` function. I removed this method and everything seems to work, so this may not be an issue
+anymore.
+
+
 .. code-block :: python
 
     import time

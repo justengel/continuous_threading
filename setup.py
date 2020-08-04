@@ -49,6 +49,7 @@ if __name__ == "__main__":
           version=version,
           description=description,
           long_description=read('README.rst'),
+          long_description_content_type='text/x-rst',
           keywords=keywords,
           url=url,
           download_url=''.join((url, '/archive/v', version, '.tar.gz')),
