@@ -37,21 +37,24 @@ def test_thread():
 
 
 def test_continuous_thread():
-    counter = [0]
+    COUNTER = [0]
 
-    def inc_counter():
+    def init_counter():
+        return {'counter': COUNTER}  # dict gets pass as kwargs to the target function.
+
+    def inc_counter(counter):
         counter[0] += 1
 
-    th = continuous_threading.ContinuousThread(target=inc_counter)
+    th = continuous_threading.ContinuousThread(target=inc_counter, init=init_counter)
     th.start()
     time.sleep(0.01)
-    val = counter[0]
+    val = COUNTER[0]
     assert val > 0
     time.sleep(0.01)
     th.join()
 
-    assert counter[0] > 1
-    assert counter[0] > val
+    assert COUNTER[0] > 1
+    assert COUNTER[0] > val
 
     # Test class based approach
     class Th(continuous_threading.ContinuousThread):

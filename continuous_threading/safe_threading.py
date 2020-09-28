@@ -140,14 +140,14 @@ class Thread(BaseThread):
         close properly. These threads are setup to handle closing a looping thread.
     """
 
-    def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None):
+    def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None, group=None):
         self.force_non_daemon = True
         self.close_warning = False
         if args is None:
             args = tuple()
         if kwargs is None:
             kwargs = dict()
-        super(Thread, self).__init__(target=target, name=name, args=args, kwargs=kwargs)
+        super(Thread, self).__init__(target=target, name=name, args=args, kwargs=kwargs, daemon=daemon, group=group)
 
         # Check the daemon argument
         if daemon is not None:
@@ -249,10 +249,31 @@ class ContinuousThread(Thread):
     """Thread that is continuously running and closes properly. Do not override the run method.
     If you are using this class with inheritance override the '_run' method.
     """
-    def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None):
+    def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None, group=None,
+                 init=None, iargs=None, ikwargs=None):
+        """Initialize the thread object.
+
+        Args:
+            target (object)[None]: Target functions to run in a separate thread.
+            name (str)[None]: Name of the new process.
+            args (tuple)[None]: Default positional arguments to pass into the given target function.
+            kwargs (dict)[None]: Default keyword arguments to pass into the given target function.
+            daemon (bool)[None]: If this process should be a daemon process. This is automatically forced to be False.
+                Non-daemon process/threads call join when python exits.
+            group (object)[None]: Not used in python multiprocessing at this time.
+            init (callable)[None]: Run this function at the start of the process. If it returns a dictionary pass the
+                dictionary as keyword arguments into the target function.
+            iargs (tuple)[None]: Positional arguments to pass into init
+            ikwargs (dict)[None]: Keyword arguments to pass into init.
+        """
         # Thread properties
         self.alive = Event()  # If the thread is running
-        super(ContinuousThread, self).__init__(target=target, name=name, args=args, kwargs=kwargs, daemon=daemon)
+        self.init = init
+        self.iargs = iargs or tuple()
+        self.ikwargs = ikwargs or dict()
+
+        super(ContinuousThread, self).__init__(target=target, name=name, args=args, kwargs=kwargs,
+                                               daemon=daemon, group=group)
 
     def is_running(self):
         """Return if the serial port is connected and alive."""
@@ -274,13 +295,25 @@ class ContinuousThread(Thread):
         """Run method called if a target is not given to the thread. This method should be overridden if inherited."""
         pass
 
+    def run_init(self):
+        """Run the init function and return the args and kwargs."""
+        args = self._args
+        kwargs = self._kwargs
+        if callable(self.init):
+            kwds = self.init(*self.iargs, **self.ikwargs)
+            if isinstance(kwds, dict) and len(kwds) > 0:
+                kwds.update(kwargs)
+                kwargs = kwds
+        return args, kwargs
+
     def run(self):
         """The thread will loop through running the set _target method (default _run()). This 
         method can be paused and restarted.
         """
+        args, kwargs = self.run_init()
         while self.alive.is_set():
             # Run the thread method
-            self._target(*self._args, **self._kwargs)
+            self._target(*args, **kwargs)
 # end class ContinuousThread
 
 
@@ -289,9 +322,26 @@ class PausableThread(ContinuousThread):
     the run method. If you are using this class with inheritance override the '_run' method.
     """
 
-    def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None):
+    def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None, group=None,
+                 init=None, iargs=None, ikwargs=None):
+        """Initialize the thread object.
+
+        Args:
+            target (object)[None]: Target functions to run in a separate thread.
+            name (str)[None]: Name of the new process.
+            args (tuple)[None]: Default positional arguments to pass into the given target function.
+            kwargs (dict)[None]: Default keyword arguments to pass into the given target function.
+            daemon (bool)[None]: If this process should be a daemon process. This is automatically forced to be False.
+                Non-daemon process/threads call join when python exits.
+            group (object)[None]: Not used in python multiprocessing at this time.
+            init (callable)[None]: Run this function at the start of the process. If it returns a dictionary pass the
+                dictionary as keyword arguments into the target function.
+            iargs (tuple)[None]: Positional arguments to pass into init
+            ikwargs (dict)[None]: Keyword arguments to pass into init.
+        """
         self.kill = Event()  # Loop condition to exit and kill the thread
-        super(PausableThread, self).__init__(target=target, name=name, args=args, kwargs=kwargs, daemon=daemon)
+        super(PausableThread, self).__init__(target=target, name=name, args=args, kwargs=kwargs,
+                                             daemon=daemon, group=group, init=init, iargs=iargs, ikwargs=ikwargs)
 
     def is_running(self):
         """Return if the serial port is connected and alive."""
@@ -333,13 +383,14 @@ class PausableThread(ContinuousThread):
         """The thread will loop through running the set _target method (default _run()). This 
         method can be paused and restarted.
         """
+        args, kwargs = self.run_init()
         while not self.kill.is_set():
             self.alive.wait()  # If alive is set then it does not wait according to docs.
             if self.kill.is_set():
                 break
 
             # Run the read and write
-            self._target(*self._args, **self._kwargs)
+            self._target(*args, **kwargs)
         # end
 
         self.alive.clear()  # The thread is no longer running
@@ -353,10 +404,27 @@ class OperationThread(ContinuousThread):
     Data must be the first argument of the target function.
     """
 
-    def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None):
+    def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None, group=None,
+                 init=None, iargs=None, ikwargs=None):
+        """Initialize the thread object.
+
+        Args:
+            target (object)[None]: Target functions to run in a separate thread.
+            name (str)[None]: Name of the new process.
+            args (tuple)[None]: Default positional arguments to pass into the given target function.
+            kwargs (dict)[None]: Default keyword arguments to pass into the given target function.
+            daemon (bool)[None]: If this process should be a daemon process. This is automatically forced to be False.
+                Non-daemon process/threads call join when python exits.
+            group (object)[None]: Not used in python multiprocessing at this time.
+            init (callable)[None]: Run this function at the start of the process. If it returns a dictionary pass the
+                dictionary as keyword arguments into the target function.
+            iargs (tuple)[None]: Positional arguments to pass into init
+            ikwargs (dict)[None]: Keyword arguments to pass into init.
+        """
         self._operations = Queue()
         self.stop_processing = False
-        super(OperationThread, self).__init__(target=target, name=name, args=args, kwargs=kwargs, daemon=daemon)
+        super(OperationThread, self).__init__(target=target, name=name, args=args, kwargs=kwargs,
+                                              daemon=daemon, group=group, init=init, iargs=iargs, ikwargs=ikwargs)
 
     def get_queue_size(self):
         """Return the operation Queue size."""
@@ -371,17 +439,18 @@ class OperationThread(ContinuousThread):
         """The thread will loop through running the set _target method (default _run()). This 
         method can be paused and restarted.
         """
+        args, kwargs = self.run_init()
         while self.alive.is_set():
             try:
                 # Wait for data and other arguments
-                args, kwargs = self._operations.get(timeout=1)
+                op_args, op_kwargs = self._operations.get(timeout=1)
 
                 # Check if this data should be executed
                 if not self.stop_processing:
                     # Run the data through the target function
-                    args = args or self._args
-                    kwargs = kwargs or self._kwargs
-                    self._target(*args, **kwargs)
+                    op_args = op_args or args
+                    op_kwargs.update(kwargs)
+                    self._target(*op_args, **op_kwargs)
             except Empty:
                 continue
 
@@ -390,23 +459,37 @@ class OperationThread(ContinuousThread):
 
 
 class PeriodicThread(ContinuousThread):
-    def __init__(self, interval, target=None, name=None, args=None, kwargs=None, daemon=None):
+    def __init__(self, interval, target=None, name=None, args=None, kwargs=None, daemon=None, group=None,
+                 init=None, iargs=None, ikwargs=None):
         """Create a thread that will run a function periodically.
 
         Args:
             interval (int/float): How often to run a function in seconds.
+            target (object)[None]: Target functions to run in a separate thread.
+            name (str)[None]: Name of the new process.
+            args (tuple)[None]: Default positional arguments to pass into the given target function.
+            kwargs (dict)[None]: Default keyword arguments to pass into the given target function.
+            daemon (bool)[None]: If this process should be a daemon process. This is automatically forced to be False.
+                Non-daemon process/threads call join when python exits.
+            group (object)[None]: Not used in python multiprocessing at this time.
+            init (callable)[None]: Run this function at the start of the process. If it returns a dictionary pass the
+                dictionary as keyword arguments into the target function.
+            iargs (tuple)[None]: Positional arguments to pass into init
+            ikwargs (dict)[None]: Keyword arguments to pass into init.
         """
-        super(PeriodicThread, self).__init__(target=target, name=name, args=args, kwargs=kwargs, daemon=daemon)
+        super(PeriodicThread, self).__init__(target=target, name=name, args=args, kwargs=kwargs,
+                                             daemon=daemon, group=group, init=init, iargs=iargs, ikwargs=ikwargs)
         self.interval = interval
 
     def run(self):
         """The thread will loop through running the set _target method (default _run()). This
         method can be paused and restarted.
         """
+        args, kwargs = self.run_init()
         start = time.time()
         while self.alive.is_set():
             # Run the thread method
-            self._target(*self._args, **self._kwargs)
+            self._target(*args, **kwargs)
             try:
                 time.sleep(self.interval - (time.time() - start))
             except ValueError:

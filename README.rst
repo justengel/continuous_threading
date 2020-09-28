@@ -117,6 +117,29 @@ Example of start and stop methods.
     print("Simple context manager print caused %d thread iterations" % th.counter)
 
 
+New init function
+.. code-block:: python
+
+    import time
+    import continuous_threading
+
+    COUNTER = [0]
+
+    def init_counter():
+        return {'counter': COUNTER}  # dict gets pass as kwargs to the target function.
+
+    def inc_coutner(counter):
+        counter[0] += 1
+
+    th = continuous_threading.ContinuousThread(target=inc_counter, init=init_counter)
+    th.start()
+    time.sleep(0.1)
+    th.stop()  # or th.close() or th.join()
+
+    assert th.counter > 0
+    print("Simple context manager print caused %d thread iterations" % th.counter)
+
+
 PausableThread
 --------------
 A continuous thread that can be stopped and started again.

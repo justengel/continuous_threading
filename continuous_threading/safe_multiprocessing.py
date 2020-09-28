@@ -47,15 +47,25 @@ def print_exception(exc, msg=None):
     typ = type(exc)
     traceback.print_exception(typ, typ(exc), exc_tb)
 
+def check_pid(pid):
+    """ Check For the existence of a unix pid. """
+
 
 def is_parent_process_alive():
     """Return if the parent process is alive. This relies on psutil, but is optional."""
+    parent_pid = os.getppid()
     if psutil is None:
-        return True
-    try:
-        return psutil.pid_exists(os.getppid())
-    except (AttributeError, KeyboardInterrupt, Exception):
-        return False
+        try:
+            os.kill(parent_pid, 0)
+        except OSError:
+            return False
+        else:
+            return True
+    else:
+        try:
+            return psutil.pid_exists()
+        except (AttributeError, KeyboardInterrupt, Exception):
+            return False
 
 
 def mark_task_done(que):
@@ -159,7 +169,8 @@ class ContinuousProcess(Process):
     and over again give a target function or override the '_run' method. It is not recommended to override the normal
     'run' method.
     """
-    def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None, group=None):
+    def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None, group=None,
+                 init=None, iargs=None, ikwargs=None):
         """Initialize the new process object.
 
         Args:
@@ -170,9 +181,17 @@ class ContinuousProcess(Process):
             daemon (bool)[None]: If this process should be a daemon process. This is automatically forced to be False.
                 Non-daemon process/threads call join when python exits.
             group (object)[None]: Not used in python multiprocessing at this time.
+            init (callable)[None]: Run this function at the start of the process. If it returns a dictionary pass the
+                dictionary as keyword arguments into the target function.
+            iargs (tuple)[None]: Positional arguments to pass into init
+            ikwargs (dict)[None]: Keyword arguments to pass into init.
         """
         # Thread properties
         self.alive = mp.Event()  # If the thread is running
+        self.init = init
+        self.iargs = iargs or tuple()
+        self.ikwargs = ikwargs or dict()
+
         super(ContinuousProcess, self).__init__(target=target, name=name, args=args, kwargs=kwargs,
                                                 daemon=daemon, group=group)
 
@@ -201,13 +220,25 @@ class ContinuousProcess(Process):
         """Run method called if a target is not given to the thread. This method should be overridden if inherited."""
         pass
 
+    def run_init(self):
+        """Run the init function and return the args and kwargs."""
+        args = self._args
+        kwargs = self._kwargs
+        if callable(self.init):
+            kwds = self.init(*self.iargs, **self.ikwargs)
+            if isinstance(kwds, dict) and len(kwds) > 0:
+                kwds.update(kwargs)
+                kwargs = kwds
+        return args, kwargs
+
     def run(self):
         """The thread will loop through running the set _target method (default _run()). This
         method can be paused and restarted.
         """
+        args, kwargs = self.run_init()
         while self.should_run():
             # Run the thread method
-            self._target(*self._args, **self._kwargs)
+            self._target(*args, **kwargs)
 
 
 class PausableProcess(ContinuousProcess):
@@ -216,7 +247,8 @@ class PausableProcess(ContinuousProcess):
     normal 'run' method.
     """
 
-    def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None, group=None):
+    def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None, group=None,
+                 init=None, iargs=None, ikwargs=None):
         """Initialize the new process object.
 
         Args:
@@ -227,10 +259,14 @@ class PausableProcess(ContinuousProcess):
             daemon (bool)[None]: If this process should be a daemon process. This is automatically forced to be False.
                 Non-daemon process/threads call join when python exits.
             group (object)[None]: Not used in python multiprocessing at this time.
+            init (callable)[None]: Run this function at the start of the process. If it returns a dictionary pass the
+                dictionary as keyword arguments into the target function.
+            iargs (tuple)[None]: Positional arguments to pass into init
+            ikwargs (dict)[None]: Keyword arguments to pass into init.
         """
         self.kill = mp.Event()  # Loop condition to exit and kill the thread
         super(PausableProcess, self).__init__(target=target, name=name, args=args, kwargs=kwargs,
-                                              daemon=daemon, group=group)
+                                              daemon=daemon, group=group, init=init, iargs=iargs, ikwargs=ikwargs)
 
     def is_running(self):
         """Return if the serial port is connected and alive."""
@@ -276,13 +312,14 @@ class PausableProcess(ContinuousProcess):
         """The thread will loop through running the set _target method (default _run()). This
         method can be paused and restarted.
         """
+        args, kwargs = self.run_init()
         while self.should_run():
             self.alive.wait()  # If alive is set then it does not wait according to docs.
             if self.kill.is_set():
                 break
 
             # Run the read and write
-            self._target(*self._args, **self._kwargs)
+            self._target(*args, **kwargs)
         # end
 
         self.alive.clear()  # The thread is no longer running
@@ -290,7 +327,8 @@ class PausableProcess(ContinuousProcess):
 
 class PeriodicProcess(ContinuousProcess):
     """This process class is for running a function continuously at a given interval."""
-    def __init__(self, interval, target=None, name=None, args=None, kwargs=None, daemon=None, group=None):
+    def __init__(self, interval, target=None, name=None, args=None, kwargs=None, daemon=None, group=None,
+                 init=None, iargs=None, ikwargs=None):
         """Initialize the new process object.
 
         Args:
@@ -302,19 +340,24 @@ class PeriodicProcess(ContinuousProcess):
             daemon (bool)[None]: If this process should be a daemon process. This is automatically forced to be False.
                 Non-daemon process/threads call join when python exits.
             group (object)[None]: Not used in python multiprocessing at this time.
+            init (callable)[None]: Run this function at the start of the process. If it returns a dictionary pass the
+                dictionary as keyword arguments into the target function.
+            iargs (tuple)[None]: Positional arguments to pass into init
+            ikwargs (dict)[None]: Keyword arguments to pass into init.
         """
         self.interval = interval
         super(PeriodicProcess, self).__init__(target=target, name=name, args=args, kwargs=kwargs,
-                                              daemon=daemon, group=group)
+                                              daemon=daemon, group=group, init=init, iargs=iargs, ikwargs=ikwargs)
 
     def run(self):
         """The thread will loop through running the set _target method (default _run()). This
         method can be paused and restarted.
         """
+        args, kwargs = self.run_init()
         while self.should_run():
             # Run the thread method
             start = time.time()
-            self._target(*self._args, **self._kwargs)
+            self._target(*args, **kwargs)
             try:
                 pause = self.interval - (time.time() - start)
                 if pause > 0:
@@ -329,7 +372,8 @@ class OperationProcess(ContinuousProcess):
     Set the target function to be the operation that runs. Call add_data to run the calculation on that piece of data.
     """
 
-    def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None, group=None):
+    def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None, group=None,
+                 init=None, iargs=None, ikwargs=None):
         """Initialize the new process object.
 
         Args:
@@ -340,12 +384,16 @@ class OperationProcess(ContinuousProcess):
             daemon (bool)[None]: If this process should be a daemon process. This is automatically forced to be False.
                 Non-daemon process/threads call join when python exits.
             group (object)[None]: Not used in python multiprocessing at this time.
+            init (callable)[None]: Run this function at the start of the process. If it returns a dictionary pass the
+                dictionary as keyword arguments into the target function.
+            iargs (tuple)[None]: Positional arguments to pass into init
+            ikwargs (dict)[None]: Keyword arguments to pass into init.
         """
         self._operations = mp.Queue()
         self._stop_processing = mp.Event()
         self._timeout = 2  # Timeout in seconds
         super(OperationProcess, self).__init__(target=target, name=name, args=args, kwargs=kwargs,
-                                               daemon=daemon, group=group)
+                                               daemon=daemon, group=group, init=init, iargs=iargs, ikwargs=ikwargs)
 
     @property
     def stop_processing(self):
@@ -408,25 +456,26 @@ class OperationProcess(ContinuousProcess):
         """The thread will loop through running the set _target method (default _run()). This
         method can be paused and restarted.
         """
+        args, kwargs = self.run_init()
         while self.should_run():
-            self._run_once()
+            self._run_once(*args, **kwargs)
 
         # Try to finish off the queue data.
         for _ in range(self.qsize()):
-            self._run_once()
+            self._run_once(*args, **kwargs)
 
         self.alive.clear()  # The thread is no longer running
 
-    def _run_once(self):
+    def _run_once(self, *args, **kwargs):
         """Try to get data from the queue and run the operation."""
         try:
             # Wait for data and other arguments
-            args, kwargs = self._operations.get(timeout=self._timeout)
+            op_args, op_kwargs = self._operations.get(timeout=self._timeout)
 
             # Check for an internal command
-            if "INTERNAL_PROCESS_COMMAND" in kwargs:
+            if "INTERNAL_PROCESS_COMMAND" in op_kwargs:
                 try:
-                    getattr(self, kwargs.pop('INTERNAL_PROCESS_COMMAND', None))(*args, **kwargs)
+                    getattr(self, kwargs.pop('INTERNAL_PROCESS_COMMAND', None))(*op_args, **op_kwargs)
                 except (AttributeError, Exception):
                     pass
                 return
@@ -434,9 +483,9 @@ class OperationProcess(ContinuousProcess):
             # Check if this data should be executed
             if not self.stop_processing:
                 # Run the data through the target function
-                args = args or self._args
-                kwargs = kwargs or self._kwargs
-                self._target(*args, **kwargs)
+                op_args = op_args or args
+                op_kwargs.update(kwargs)
+                self._target(*op_args, **op_kwargs)
 
             # If joinable queue mark task as done.
             mark_task_done(self._operations)
@@ -474,7 +523,8 @@ class CommandProcess(ContinuousProcess):
     ProcessCommand = ProcessCommand
     ExecCommand = ExecCommand
 
-    def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None, group=None):
+    def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None, group=None,
+                 init=None, iargs=None, ikwargs=None):
         """Initialize the new process object.
 
         Args:
@@ -485,12 +535,16 @@ class CommandProcess(ContinuousProcess):
             daemon (bool)[None]: If this process should be a daemon process. This is automatically forced to be False.
                 Non-daemon process/threads call join when python exits.
             group (object)[None]: Not used in python multiprocessing at this time.
+            init (callable)[None]: Run this function at the start of the process. If it returns a dictionary pass the
+                dictionary as keyword arguments into the target function.
+            iargs (tuple)[None]: Positional arguments to pass into init
+            ikwargs (dict)[None]: Keyword arguments to pass into init.
         """
         self._obj_cache = {}
         self._cmd_queue = mp.Queue()
         self._timeout = 2  # Timeout in seconds
         super(CommandProcess, self).__init__(target=None, name=name, args=args, kwargs=kwargs,
-                                             daemon=daemon, group=group)
+                                             daemon=daemon, group=group, init=init, iargs=iargs, ikwargs=ikwargs)
 
         # Manually set the target/object to trigger the cache.
         if target is not None:
@@ -584,16 +638,17 @@ class CommandProcess(ContinuousProcess):
         """The thread will loop through running the set _target method (default _run()). This
         method can be paused and restarted.
         """
+        args, kwargs = self.run_init()
         while self.should_run():
-            self._run_once()
+            self._run_once(*args, **kwargs)
 
         # Try to finish off the queue data.
         for _ in range(self.qsize()):
-            self._run_once()
+            self._run_once(*args, **kwargs)
 
         self.alive.clear()  # The thread is no longer running
 
-    def _run_once(self):
+    def _run_once(self, *args, **kwargs):
         """Try to get data from the queue and run the operation."""
         try:
             # Wait for data and other arguments
@@ -602,20 +657,22 @@ class CommandProcess(ContinuousProcess):
             # Check the command type
             if isinstance(cmd, self.ExecCommand):
                 func = cmd
-                args = tuple()
-                kwargs = {}
+                op_args = tuple()
+                op_kwargs = {}
             elif isinstance(cmd, self.ProcessCommand):
                 func = getattr(self, cmd.name, None)
-                args = cmd.args
-                kwargs = cmd.kwargs
+                op_args = cmd.args
+                op_kwargs = cmd.kwargs
             else:
                 func = getattr(self._target, cmd.name, None)
-                args = cmd.args
-                kwargs = cmd.kwargs
+                op_args = cmd.args
+                op_kwargs = cmd.kwargs
 
             try:
                 if func:
-                    func(*args, **kwargs)
+                    op_args = op_args or args
+                    op_kwargs.update(kwargs)
+                    func(*op_args, **op_kwargs)
             except (AttributeError, TypeError, ValueError, Exception) as err:
                 print_exception(err)
 

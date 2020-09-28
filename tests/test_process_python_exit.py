@@ -15,13 +15,13 @@ def test_process():
 def test_continuous():
     class CountingProcess(continuous_threading.ContinuousProcess):
         def __init__(self):
-            super(CountingThread, self).__init__()
+            super(CountingProcess, self).__init__()
             self.counter = 0
 
         def _run(self):
             self.counter += 1
 
-    th = CountingThread()
+    th = CountingProcess()
     th.start()
     time.sleep(0.1)
     print('Iterations', th.counter)
