@@ -74,7 +74,7 @@ Note:
 """
 import sys
 import time
-from threading import Thread as BaseThread, Event, Timer, enumerate
+import threading
 
 try:
     from queue import Queue, Empty
@@ -82,50 +82,20 @@ except ImportError:
     from Queue import Queue, Empty
 
 
-__all__ = ['Queue', 'Empty', 'Thread', 'ContinuousThread', 'PausableThread', 'OperationThread', 'PeriodicThread',
-           'shutdown']
+__all__ = [
+    'is_py27', 'Queue', 'Empty',
+    'Thread', 'ContinuousThread', 'PausableThread', 'OperationThread', 'PeriodicThread'
+    ]
 
 
-SMALL_SLEEP_VALUE = 0.0000000000001
+SMALL_SLEEP_VALUE = 0.00001
 is_py27 = sys.version_info < (3, 0)
 
-
-def shutdown(timeout=None):
-    """Python's threading._shutdown is no longer called or hangs before exit.
-    This library depends on that function. That function found all of the non-daemon threads and
-    called the join method. This threading library was built around that function. This function
-    calls join(0) on all of the non-daemon threads to ensure cleanup from every thread.
-
-    You may want to put this at the end of your code. Atexit will not work for this.
-
-    I did not have a problem with Python 3.4. I noticed this issue in Python 3.8. I do not know
-    when or why this stopped working.
-
-    .. code-block :: python
-
-        import time
-        import continuous_threading
-
-        def do_something():
-            print('hello')
-            time.sleep(1)
-
-        th = continuous_threading.PausableThread(target=do_something)
-        th.start()
-
-        time.sleep(10)
-
-        continuous_threading.shutdown()
-
-    Args:
-        timeout (int/float)[None]: Timeout argument to pass into every thread's join method.
-    """
-    for th in enumerate():
-        try:
-            if th.is_alive() and not th.isDaemon():
-                th.join(timeout)
-        except:
-            pass
+# Thread Objects
+BaseThread = threading.Thread
+Event = threading.Event
+Timer = threading.Timer
+RLock = threading.RLock
 
 
 class Thread(BaseThread):
@@ -143,6 +113,7 @@ class Thread(BaseThread):
     def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None, group=None):
         self.force_non_daemon = True
         self.close_warning = False
+        self._is_alive = Event()
         if args is None:
             args = tuple()
         if kwargs is None:
@@ -172,12 +143,12 @@ class Thread(BaseThread):
             `start()` function is called. If you want to run a daemon thread set `force_non_daemon = False` and set
             `daemon = True`. If you do this then the `close()` function is not guaranteed to be called.
         """
-        global SHUTDOWN_REGISTERED
         if not self._started.is_set():
             # If daemone=False python forces join to be called which closes the thread properly.
             if self.force_non_daemon:
                 self.daemon = False
 
+            self._is_alive.set()
             super(Thread, self).start()
 
     def stop(self):
@@ -188,13 +159,44 @@ class Thread(BaseThread):
         """Close the thread (clean up variables)."""
         self.stop()
 
+    def is_alive(self):
+        """Return if the Thread is alive.
+
+        The threading.Thread.is_alive uses the "_tstate_lock". This library implemented allow_shutdown() which allows
+        users to change the "_tstate_lock". This stops threading._shutdown() from halting until "_tstate_lock"
+        is released.
+        """
+        try:
+            return self._is_alive.is_set()
+        except (AttributeError, Exception):
+            return False
+
     def _run(self, *args, **kwargs):
         """Default function target to run if a target is not given."""
         pass
+
+    def allow_shutdown(self):
+        """Release the "_tstate_lock" to allow threading._shutdown to finish.
+
+        The threading._shutdown() function waits for all non-daemon threads to release their "_t_state_lock".
+        This allows the ContinuousThread to join() automatically at exit.
+
+        Returns:
+            lock (RLock): The "_tstate_lock" or new RLock that can be used to safely run code blocks.
+                See Also ContinuousThread.run().
+        """
+        lock = getattr(self, '_tstate_lock')
+        if lock is not None:
+            lock.release()
+        else:
+            lock = RLock()
+        return lock
     
     def join(self, timeout=None):
         """Properly close the thread."""
         try:
+            self._is_alive.clear()
+
             # Close warning
             join_tmr = self._create_close_warning_timer(timeout)
 
@@ -311,9 +313,14 @@ class ContinuousThread(Thread):
         method can be paused and restarted.
         """
         args, kwargs = self.run_init()
+
+        # Allow threading._shutdown() to continue
+        lock = self.allow_shutdown()
+
         while self.alive.is_set():
-            # Run the thread method
-            self._target(*args, **kwargs)
+            # Run the thread method while protected in the lock state
+            with lock:
+                self._target(*args, **kwargs)
 # end class ContinuousThread
 
 
@@ -384,13 +391,18 @@ class PausableThread(ContinuousThread):
         method can be paused and restarted.
         """
         args, kwargs = self.run_init()
+
+        # Allow threading._shutdown() to continue
+        lock = self.allow_shutdown()
+
         while not self.kill.is_set():
             self.alive.wait()  # If alive is set then it does not wait according to docs.
             if self.kill.is_set():
                 break
 
-            # Run the read and write
-            self._target(*args, **kwargs)
+            # Run the thread method while protected in the lock state
+            with lock:
+                self._target(*args, **kwargs)
         # end
 
         self.alive.clear()  # The thread is no longer running
@@ -440,6 +452,10 @@ class OperationThread(ContinuousThread):
         method can be paused and restarted.
         """
         args, kwargs = self.run_init()
+
+        # Allow threading._shutdown() to continue
+        lock = self.allow_shutdown()
+
         while self.alive.is_set():
             try:
                 # Wait for data and other arguments
@@ -447,10 +463,12 @@ class OperationThread(ContinuousThread):
 
                 # Check if this data should be executed
                 if not self.stop_processing:
-                    # Run the data through the target function
-                    op_args = op_args or args
-                    op_kwargs.update(kwargs)
-                    self._target(*op_args, **op_kwargs)
+                    # Run the thread method while protected in the lock state
+                    with lock:
+                        # Run the data through the target function
+                        op_args = op_args or args
+                        op_kwargs.update(kwargs)
+                        self._target(*op_args, **op_kwargs)
             except Empty:
                 continue
 
@@ -486,10 +504,15 @@ class PeriodicThread(ContinuousThread):
         method can be paused and restarted.
         """
         args, kwargs = self.run_init()
+
+        # Allow threading._shutdown() to continue
+        lock = self.allow_shutdown()
+
         start = time.time()
         while self.alive.is_set():
-            # Run the thread method
-            self._target(*args, **kwargs)
+            # Run the thread method while protected in the lock state
+            with lock:
+                self._target(*args, **kwargs)
             try:
                 time.sleep(self.interval - (time.time() - start))
             except ValueError:

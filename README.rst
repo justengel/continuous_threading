@@ -9,46 +9,139 @@ which starves other threads. Another problem is if you don't exit an infinite lo
 after python has tried to exit. Daemon threads will close, but resources/variables may not be cleaned up properly. 
 Mostly, I needed to finish writing data to a file before the thread closed. This library aims to solve those problems.
 
-This library provides 4 main thread utilities:
-  * shutdown - Call `join(timeout)` on every non-daemon thread that is active.
+This library provides a couple of main thread utilities:
   * Thread - threading with context manager support
   * ContinuousThread - Run a function continuously in a loop (It is suggested sleep is called periodically if no I/O)
   * PausableThread - Continuous thread that can be stopped and started again.
   * OperationThread - Thread that will run a calculation in a separate thread with different data.
   * PeriodicThread - Thread that runs a function periodically at a given interval.
+  * shutdown - Call `join(timeout)` on every non-daemon thread that is active.
 
 
-Shutdown Update
----------------
+Shutdown Update!
+================
 
-Noticed issue with Python 3.8 on Windows. Python's threading._shutdown method is never called or hangs before exit.
-This library is dependent on that function. I added a shutdown method that can be added to the end of your code.
-This will ensure that `join()` is called on all of the non-daemon threads.
+Noticed issue with Python 3.8 on Windows. Python's threading._shutdown method can hang forever preventing the
+process from exiting. This library is dependent on that function. I override threading._shutdown to automatically
+"join"  all non-daemon threads.
 
-This issue may have been caused by me adding a `_stop` method to the Thread class. Python's threading library may
-require the use of the `_stop` function. I removed this method and everything seems to work, so this may not be an issue
-anymore.
+Note: Python's threading.Thread has a `_stop` method. Try not to override this method.
 
 
-.. code-block :: python
+Problem
+-------
+
+.. code-block:: python
+
+    import time
+    import threading
+
+    c = 0
+
+    def count_loop():
+        global c
+
+        while True:
+            c += 1
+            time.sleep(1)
+
+    th = threading.Thread(target=count_loop)
+    th.start()
+
+    time.sleep(5)
+    print('Count:', c)
+
+    # Process will not exit, because thread is running and cannot end
+
+
+Solution
+--------
+
+Added an `allow_shutdown()` method and a `shutdown()` function.
+The "ContinuousThread", "PausableThread", "OperationThread", and "PeriodicThread" do not have this problem.
+The continuous_threading library overrides `threading._shutdown` and has fixes to allow ContinuousThread's to close
+automatically.
+
+.. code-block:: python
 
     import time
     import continuous_threading
 
-    def do_something():
-        print('hello')
-        time.sleep(1)
+    c = 0
 
-    th = continuous_threading.PausableThread(target=do_something)
+    def count_loop():
+        global c
+
+        while True:
+            c += 1
+            time.sleep(1)
+
+    th = continuous_threading.Thread(target=count_loop)
     th.start()
 
-    time.sleep(10)
+    time.sleep(5)
+    print('Count:', c)
 
-    continuous_threading.shutdown()
+    continuous_threading.shutdown(0)  # Call join on every non-daemon Thread.
+
+    # Alternative. This does not call join normally. continuous_threading threading._shutdown override does call "join".
+    # th.allow_shutdown()  # Release "_tstate_lock" allowing threading._shutdown to continue
+
+    # Process will exit, because allow_shutdown or shutdown
+
+
+Close Infinite Loop Threads Automatically
+-----------------------------------------
+
+Control how the override threading._shutdown works.
+
+.. code-block:: python
+
+    import time
+    import continuous_threading
+
+    # Change threading._shutdown() to automatically call Thread.allow_shutdown()
+    continuous_threading.set_allow_shutdown(True)
+    continuous_threading.set_shutdown_timeout(0)  # Default 1
+
+    c = 0
+
+    def count_loop():
+        global c
+
+        while True:
+            c += 1
+            time.sleep(1)
+
+    th = continuous_threading.Thread(target=count_loop)
+    th.start()
+
+    time.sleep(5)
+    print('Count:', c)
+
+    # Process will exit due to "set_allow_shutdown"
+
+
+Can also just call `continuous_threading.shutdown()`
+
+Remove threading._shutdown() override
+-------------------------------------
+
+You can change the threading._shutdown function with
+
+.. code-block:: python
+
+    import continuous_threading
+
+    # Change back to original threading._shutdown function
+    continuous_threading.reset_shutdown()
+
+    # Set custom function or leave empty to use continuous_threading custom_shutdown()
+    continuous_threading.set_shutdown()
 
 
 Thread context manager
-----------------------
+======================
 This library turns threads into a context manager which automatically starts and stops threads.
 
 .. code-block:: python
@@ -69,7 +162,7 @@ This library turns threads into a context manager which automatically starts and
 
 
 ContinuousThread
-----------------
+================
 The ContinuousThread is a simple thread in an infinite while loop. The while loop keeps looping while the thread 
 alive Event is set. Call `thread.stop()`, `thread.close()`, or `thread.join()` to stop the thread. The thread should 
 also stop automatically when the python program is exiting/closing.
@@ -141,7 +234,7 @@ New init function
 
 
 PausableThread
---------------
+==============
 A continuous thread that can be stopped and started again.
 
 .. code-block:: python
@@ -203,7 +296,7 @@ Again this can be used as a context manager.
 
 
 PeriodicThread
---------------
+==============
 
 Run a function periodically.
 
@@ -228,7 +321,7 @@ Run a function periodically.
 
 
 OperationThread
----------------
+===============
 Add data to a queue which will be operated on in a separate thread.
 
 .. code-block:: python
