@@ -75,6 +75,7 @@ Note:
 import sys
 import time
 import threading
+import contextlib
 
 try:
     from queue import Queue, Empty
@@ -96,6 +97,19 @@ BaseThread = threading.Thread
 Event = threading.Event
 Timer = threading.Timer
 RLock = threading.RLock
+
+
+@contextlib.contextmanager
+def safe_release(lock):
+    """Fixes RuntimeError for unlocking a released lock."""
+    # with lock:
+    #     yield
+    try:
+        lock.acquire()
+        yield
+    finally:
+        if lock.locked():
+            lock.release()
 
 
 class Thread(BaseThread):
@@ -319,7 +333,7 @@ class ContinuousThread(Thread):
 
         while self.alive.is_set():
             # Run the thread method while protected in the lock state
-            with lock:
+            with safe_release(lock):
                 self._target(*args, **kwargs)
 # end class ContinuousThread
 
@@ -401,7 +415,7 @@ class PausableThread(ContinuousThread):
                 break
 
             # Run the thread method while protected in the lock state
-            with lock:
+            with safe_release(lock):
                 self._target(*args, **kwargs)
         # end
 
@@ -464,7 +478,7 @@ class OperationThread(ContinuousThread):
                 # Check if this data should be executed
                 if not self.stop_processing:
                     # Run the thread method while protected in the lock state
-                    with lock:
+                    with safe_release(lock):
                         # Run the data through the target function
                         op_args = op_args or args
                         op_kwargs.update(kwargs)
@@ -511,7 +525,7 @@ class PeriodicThread(ContinuousThread):
         start = time.time()
         while self.alive.is_set():
             # Run the thread method while protected in the lock state
-            with lock:
+            with safe_release(lock):
                 self._target(*args, **kwargs)
             try:
                 time.sleep(self.interval - (time.time() - start))
