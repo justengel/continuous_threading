@@ -431,7 +431,7 @@ class OperationThread(ContinuousThread):
     """
 
     def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None, group=None,
-                 init=None, iargs=None, ikwargs=None):
+                 init=None, iargs=None, ikwargs=None, timeout=2):
         """Initialize the thread object.
 
         Args:
@@ -446,11 +446,31 @@ class OperationThread(ContinuousThread):
                 dictionary as keyword arguments into the target function.
             iargs (tuple)[None]: Positional arguments to pass into init
             ikwargs (dict)[None]: Keyword arguments to pass into init.
+            timeout (int/float): Queue.get timeout.
         """
         self._operations = Queue()
         self.stop_processing = False
+        self._timeout = timeout
         super(OperationThread, self).__init__(target=target, name=name, args=args, kwargs=kwargs,
                                               daemon=daemon, group=group, init=init, iargs=iargs, ikwargs=ikwargs)
+
+    def get_timeout(self):
+        """Return the queue timeout."""
+        return self._timeout
+
+    def set_timeout(self, value):
+        """Set the queue timeout."""
+        self._timeout = value
+
+    @property
+    def timeout(self):
+        """Return the queue timeout."""
+        return self.get_timeout()
+
+    @timeout.setter
+    def timeout(self, value):
+        """Set the queue timeout."""
+        self.set_timeout(value)
 
     def get_queue_size(self):
         """Return the operation Queue size."""
@@ -473,7 +493,7 @@ class OperationThread(ContinuousThread):
         while self.alive.is_set():
             try:
                 # Wait for data and other arguments
-                op_args, op_kwargs = self._operations.get(timeout=1)
+                op_args, op_kwargs = self._operations.get(timeout=self.timeout)
 
                 # Check if this data should be executed
                 if not self.stop_processing:

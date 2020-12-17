@@ -470,7 +470,7 @@ class OperationProcess(ContinuousProcess):
         """Try to get data from the queue and run the operation."""
         try:
             # Wait for data and other arguments
-            op_args, op_kwargs = self._operations.get(timeout=self._timeout)
+            op_args, op_kwargs = self._operations.get(timeout=self.timeout)
 
             # Check for an internal command
             if "INTERNAL_PROCESS_COMMAND" in op_kwargs:
