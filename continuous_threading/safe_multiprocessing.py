@@ -63,7 +63,7 @@ def is_parent_process_alive():
             return True
     else:
         try:
-            return psutil.pid_exists()
+            return psutil.pid_exists(parent_pid)
         except (AttributeError, KeyboardInterrupt, Exception):
             return False
 
