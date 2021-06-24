@@ -161,9 +161,9 @@ class Timer(continuous_threading.ContinuousThread):
                 self.time_event.wait(self.interval)  # Will return True when time_event.set() is called
 
 
-def test_periodic_accuracy(periodic_thread_class=None):
-    if periodic_thread_class is None:
-        periodic_thread_class = PeriodicThread_1
+def test_periodic_accuracy(periodic_class=None):
+    if periodic_class is None:
+        periodic_class = PeriodicThread_1
 
     period = 0.001  # 0.0001 NOT ACCURATE ON WINDOWS
     time_list = []
@@ -172,7 +172,7 @@ def test_periodic_accuracy(periodic_thread_class=None):
     def log_time():
         add_time(time.time())
 
-    th = periodic_thread_class(period, target=log_time)
+    th = periodic_class(period, target=log_time)
     th.start()
 
     time.sleep(4)
@@ -181,7 +181,7 @@ def test_periodic_accuracy(periodic_thread_class=None):
     # Compare times
     diff = [(time_list[i+1] - time_list[i]) - period for i in range(0, len(time_list)-1, 2)]
     # print('Time offsets:', diff)
-    print(periodic_thread_class.__name__, 'Average time offset:', sum(diff)/len(diff),
+    print(periodic_class.__name__, 'Average time offset:', sum(diff)/len(diff),
           'The period was ', period,
           'The number of occurrences was', len(diff))
 

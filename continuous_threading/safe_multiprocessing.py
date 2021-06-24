@@ -47,9 +47,6 @@ def print_exception(exc, msg=None):
     typ = type(exc)
     traceback.print_exception(typ, typ(exc), exc_tb)
 
-def check_pid(pid):
-    """ Check For the existence of a unix pid. """
-
 
 def is_parent_process_alive():
     """Return if the parent process is alive. This relies on psutil, but is optional."""
@@ -79,7 +76,7 @@ def mark_task_done(que):
 
 class Process(mp.Process):
     """Run a function in a separate process."""
-    def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None, group=None):
+    def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None, group=None, alive=None, **kwds):
         """Initialize the new process object.
 
         Args:
@@ -90,13 +87,17 @@ class Process(mp.Process):
             daemon (bool)[None]: If this process should be a daemon process. This is automatically forced to be False.
                 Non-daemon process/threads call join when python exits.
             group (object)[None]: Not used in python multiprocessing at this time.
+            alive (mp.Event)[None]: Alive event to indicate if the thread is alive.
         """
+        if alive is None:
+            alive = mp.Event()
         self.force_non_daemon = True
         if args is None:
             args = tuple()
         if kwargs is None:
             kwargs = {}
         self._started = mp.Event()
+        self._alive = alive
         super(Process, self).__init__(target=target, name=name, args=args, kwargs=kwargs, daemon=daemon, group=group)
 
         if self._target is None and hasattr(self, '_run'):
@@ -116,7 +117,32 @@ class Process(mp.Process):
 
     def should_run(self):
         """Return if this separate process should keep running."""
-        return is_parent_process_alive()
+        return self.is_alive() and is_parent_process_alive()
+
+    @property
+    def alive(self):
+        """Return the alive threading event."""
+        return self._alive
+
+    @alive.setter
+    def alive(self, value):
+        if value is None:
+            value = mp.Event()
+        if self.is_alive():
+            value.set()
+        self._alive = value
+
+    def is_alive(self):
+        """Return if the Thread is alive.
+
+        The threading.Thread.is_alive uses the "_tstate_lock". This library implemented allow_shutdown() which allows
+        users to change the "_tstate_lock". This stops threading._shutdown() from halting until "_tstate_lock"
+        is released.
+        """
+        try:
+            return self._alive.is_set()
+        except (AttributeError, Exception):
+            return False
 
     def start(self):
         """Start running the thread.
@@ -126,6 +152,7 @@ class Process(mp.Process):
             `start()` function is called. If you want to run a daemon thread set `force_non_daemon = False` and set
             `daemon = True`. If you do this then the `close()` function is not guaranteed to be called.
         """
+        self.alive.set()
         if not self._started.is_set():
             # If daemone=False python forces join to be called which closes the thread properly.
             self.daemon = self.force_non_daemon or self.daemon
@@ -138,7 +165,17 @@ class Process(mp.Process):
 
     def stop(self):
         """Stop the thread."""
+        self.alive.clear()
         return self
+
+    def run(self):
+        """
+        Method to be run in sub-process; can be overridden in sub-class
+        """
+        if self._target:
+            self._target(*self._args, **self._kwargs)
+
+        self.alive.clear()
 
     def close(self):
         """Close the thread (clean up variables)."""
@@ -170,7 +207,7 @@ class ContinuousProcess(Process):
     'run' method.
     """
     def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None, group=None,
-                 init=None, iargs=None, ikwargs=None):
+                 init=None, iargs=None, ikwargs=None, alive=None, **kwds):
         """Initialize the new process object.
 
         Args:
@@ -185,31 +222,25 @@ class ContinuousProcess(Process):
                 dictionary as keyword arguments into the target function.
             iargs (tuple)[None]: Positional arguments to pass into init
             ikwargs (dict)[None]: Keyword arguments to pass into init.
+            alive (mp.Event)[None]: Alive event to indicate if the thread is alive.
         """
         # Thread properties
-        self.alive = mp.Event()  # If the thread is running
         self.init = init
         self.iargs = iargs or tuple()
         self.ikwargs = ikwargs or dict()
 
         super(ContinuousProcess, self).__init__(target=target, name=name, args=args, kwargs=kwargs,
-                                                daemon=daemon, group=group)
+                                                daemon=daemon, group=group, alive=alive, **kwds)
 
     def is_running(self):
         """Return if the serial port is connected and alive."""
-        return self.alive.is_set()
+        return self.is_alive()
 
     is_active = is_running
 
     def should_run(self):
         """Return if this separate process should keep running."""
-        return self.alive.is_set() and is_parent_process_alive()
-
-    def start(self):
-        """Start running the thread."""
-        self.alive.set()
-        super(ContinuousProcess, self).start()
-        return self
+        return self.is_alive() and is_parent_process_alive()
 
     def stop(self):
         """Stop running the thread."""
@@ -240,6 +271,8 @@ class ContinuousProcess(Process):
             # Run the thread method
             self._target(*args, **kwargs)
 
+        self.alive.clear()
+
 
 class PausableProcess(ContinuousProcess):
     """Process that is continuously running, can be paused, and closes properly. If you want a single function to run
@@ -248,7 +281,7 @@ class PausableProcess(ContinuousProcess):
     """
 
     def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None, group=None,
-                 init=None, iargs=None, ikwargs=None):
+                 init=None, iargs=None, ikwargs=None, alive=None, kill=None, **kwds):
         """Initialize the new process object.
 
         Args:
@@ -263,20 +296,45 @@ class PausableProcess(ContinuousProcess):
                 dictionary as keyword arguments into the target function.
             iargs (tuple)[None]: Positional arguments to pass into init
             ikwargs (dict)[None]: Keyword arguments to pass into init.
+            alive (mp.Event)[None]: Alive event to indicate if the thread is alive.
+            kill (mp.Event)[None]: Kill event to indicate that the thread should be killed and stopped.
         """
-        self.kill = mp.Event()  # Loop condition to exit and kill the thread
+        if kill is None:
+            kill = mp.Event()
+        self._kill = kill  # Loop condition to exit and kill the thread
         super(PausableProcess, self).__init__(target=target, name=name, args=args, kwargs=kwargs,
-                                              daemon=daemon, group=group, init=init, iargs=iargs, ikwargs=ikwargs)
+                                              daemon=daemon, group=group, init=init, iargs=iargs, ikwargs=ikwargs,
+                                              alive=alive, **kwds)
+
+    @property
+    def kill(self):
+        """Return the kill threading event."""
+        return self._kill
+
+    @kill.setter
+    def kill(self, value):
+        if value is None:
+            value = mp.Event()
+        if self._kill.is_set():
+            value.set()
+        self._kill = value
+
+    def is_killed(self):
+        """Return if the kill threading event is set."""
+        try:
+            return self._kill.is_set()
+        except (AttributeError, RuntimeError, Exception):
+            return False
 
     def is_running(self):
         """Return if the serial port is connected and alive."""
-        return not self.kill.is_set() and self.alive.is_set()
+        return not self.is_killed() and self.is_alive()
 
     is_active = is_running
 
     def should_run(self):
         """Return if this separate process should keep running."""
-        return not self.kill.is_set() and is_parent_process_alive()
+        return not self.is_killed() and is_parent_process_alive()
 
     def start(self):
         """Start running the thread.
@@ -315,7 +373,7 @@ class PausableProcess(ContinuousProcess):
         args, kwargs = self.run_init()
         while self.should_run():
             self.alive.wait()  # If alive is set then it does not wait according to docs.
-            if self.kill.is_set():
+            if self.is_killed():
                 break
 
             # Run the read and write
@@ -328,7 +386,7 @@ class PausableProcess(ContinuousProcess):
 class PeriodicProcess(ContinuousProcess):
     """This process class is for running a function continuously at a given interval."""
     def __init__(self, interval, target=None, name=None, args=None, kwargs=None, daemon=None, group=None,
-                 init=None, iargs=None, ikwargs=None):
+                 init=None, iargs=None, ikwargs=None, alive=None, **kwds):
         """Initialize the new process object.
 
         Args:
@@ -344,10 +402,12 @@ class PeriodicProcess(ContinuousProcess):
                 dictionary as keyword arguments into the target function.
             iargs (tuple)[None]: Positional arguments to pass into init
             ikwargs (dict)[None]: Keyword arguments to pass into init.
+            alive (mp.Event)[None]: Alive event to indicate if the thread is alive.
         """
         self.interval = interval
         super(PeriodicProcess, self).__init__(target=target, name=name, args=args, kwargs=kwargs,
-                                              daemon=daemon, group=group, init=init, iargs=iargs, ikwargs=ikwargs)
+                                              daemon=daemon, group=group, init=init, iargs=iargs, ikwargs=ikwargs,
+                                              alive=alive, **kwds)
 
     def run(self):
         """The thread will loop through running the set _target method (default _run()). This
@@ -365,6 +425,8 @@ class PeriodicProcess(ContinuousProcess):
             except ValueError:
                 pass  # sleep time less than 0
 
+        self.alive.clear()
+
 
 class OperationProcess(ContinuousProcess):
     """This thread class is for running a calculation over and over, but with different data.
@@ -373,7 +435,7 @@ class OperationProcess(ContinuousProcess):
     """
 
     def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None, group=None,
-                 init=None, iargs=None, ikwargs=None):
+                 init=None, iargs=None, ikwargs=None, alive=None, **kwds):
         """Initialize the new process object.
 
         Args:
@@ -388,12 +450,14 @@ class OperationProcess(ContinuousProcess):
                 dictionary as keyword arguments into the target function.
             iargs (tuple)[None]: Positional arguments to pass into init
             ikwargs (dict)[None]: Keyword arguments to pass into init.
+            alive (mp.Event)[None]: Alive event to indicate if the thread is alive.
         """
         self._operations = mp.Queue()
         self._stop_processing = mp.Event()
         self._timeout = 2  # Timeout in seconds
         super(OperationProcess, self).__init__(target=target, name=name, args=args, kwargs=kwargs,
-                                               daemon=daemon, group=group, init=init, iargs=iargs, ikwargs=ikwargs)
+                                               daemon=daemon, group=group, init=init, iargs=iargs, ikwargs=ikwargs,
+                                               alive=alive, **kwds)
 
     @property
     def stop_processing(self):
@@ -524,7 +588,7 @@ class CommandProcess(ContinuousProcess):
     ExecCommand = ExecCommand
 
     def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None, group=None,
-                 init=None, iargs=None, ikwargs=None):
+                 init=None, iargs=None, ikwargs=None, alive=None, **kwds):
         """Initialize the new process object.
 
         Args:
@@ -539,12 +603,14 @@ class CommandProcess(ContinuousProcess):
                 dictionary as keyword arguments into the target function.
             iargs (tuple)[None]: Positional arguments to pass into init
             ikwargs (dict)[None]: Keyword arguments to pass into init.
+            alive (mp.Event)[None]: Alive event to indicate if the thread is alive.
         """
         self._obj_cache = {}
         self._cmd_queue = mp.Queue()
         self._timeout = 2  # Timeout in seconds
         super(CommandProcess, self).__init__(target=None, name=name, args=args, kwargs=kwargs,
-                                             daemon=daemon, group=group, init=init, iargs=iargs, ikwargs=ikwargs)
+                                             daemon=daemon, group=group, init=init, iargs=iargs, ikwargs=ikwargs,
+                                             alive=alive, **kwds)
 
         # Manually set the target/object to trigger the cache.
         if target is not None:

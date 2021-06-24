@@ -124,10 +124,13 @@ class Thread(BaseThread):
         close properly. These threads are setup to handle closing a looping thread.
     """
 
-    def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None, group=None):
+    def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None, group=None, alive=None,
+                 **kwds):
+        if alive is None:
+            alive = Event()
         self.force_non_daemon = True
         self.close_warning = False
-        self._is_alive = Event()
+        self._alive = alive
         if args is None:
             args = tuple()
         if kwargs is None:
@@ -157,21 +160,34 @@ class Thread(BaseThread):
             `start()` function is called. If you want to run a daemon thread set `force_non_daemon = False` and set
             `daemon = True`. If you do this then the `close()` function is not guaranteed to be called.
         """
+        self.alive.set()
         if not self._started.is_set():
             # If daemone=False python forces join to be called which closes the thread properly.
             if self.force_non_daemon:
                 self.daemon = False
 
-            self._is_alive.set()
             super(Thread, self).start()
 
     def stop(self):
         """Stop the thread."""
-        pass
+        self.alive.clear()
 
     def close(self):
         """Close the thread (clean up variables)."""
         self.stop()
+
+    @property
+    def alive(self):
+        """Return the alive threading event."""
+        return self._alive
+
+    @alive.setter
+    def alive(self, value):
+        if value is None:
+            value = Event()
+        if self.is_alive():
+            value.set()
+        self._alive = value
 
     def is_alive(self):
         """Return if the Thread is alive.
@@ -181,7 +197,7 @@ class Thread(BaseThread):
         is released.
         """
         try:
-            return self._is_alive.is_set()
+            return self._alive.is_set()
         except (AttributeError, Exception):
             return False
 
@@ -209,7 +225,7 @@ class Thread(BaseThread):
     def join(self, timeout=None):
         """Properly close the thread."""
         try:
-            self._is_alive.clear()
+            self.alive.clear()
 
             # Close warning
             join_tmr = self._create_close_warning_timer(timeout)
@@ -266,7 +282,7 @@ class ContinuousThread(Thread):
     If you are using this class with inheritance override the '_run' method.
     """
     def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None, group=None,
-                 init=None, iargs=None, ikwargs=None):
+                 init=None, iargs=None, ikwargs=None, alive=None, **kwds):
         """Initialize the thread object.
 
         Args:
@@ -281,26 +297,21 @@ class ContinuousThread(Thread):
                 dictionary as keyword arguments into the target function.
             iargs (tuple)[None]: Positional arguments to pass into init
             ikwargs (dict)[None]: Keyword arguments to pass into init.
+            alive (threading.Event)[None]: Alive event to indicate if the thread is alive.
         """
         # Thread properties
-        self.alive = Event()  # If the thread is running
         self.init = init
         self.iargs = iargs or tuple()
         self.ikwargs = ikwargs or dict()
 
         super(ContinuousThread, self).__init__(target=target, name=name, args=args, kwargs=kwargs,
-                                               daemon=daemon, group=group)
+                                               daemon=daemon, group=group, alive=alive, **kwds)
 
     def is_running(self):
         """Return if the serial port is connected and alive."""
-        return self.alive.is_set()
+        return self.is_alive()
     
     is_active = is_running
-
-    def start(self):
-        """Start running the thread."""
-        self.alive.set()
-        super(ContinuousThread, self).start()
 
     def stop(self):
         """Stop running the thread."""
@@ -331,10 +342,12 @@ class ContinuousThread(Thread):
         # Allow threading._shutdown() to continue
         lock = self.allow_shutdown()
 
-        while self.alive.is_set():
+        while self.is_alive():
             # Run the thread method while protected in the lock state
             with safe_release(lock):
                 self._target(*args, **kwargs)
+
+        self.alive.clear()
 # end class ContinuousThread
 
 
@@ -344,7 +357,7 @@ class PausableThread(ContinuousThread):
     """
 
     def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None, group=None,
-                 init=None, iargs=None, ikwargs=None):
+                 init=None, iargs=None, ikwargs=None, alive=None, kill=None, **kwds):
         """Initialize the thread object.
 
         Args:
@@ -359,14 +372,39 @@ class PausableThread(ContinuousThread):
                 dictionary as keyword arguments into the target function.
             iargs (tuple)[None]: Positional arguments to pass into init
             ikwargs (dict)[None]: Keyword arguments to pass into init.
+            alive (threading.Event)[None]: Alive event to indicate if the thread is alive.
+            kill (threading.Event)[None]: Kill event to indicate that the thread should be killed and stopped.
         """
-        self.kill = Event()  # Loop condition to exit and kill the thread
+        if kill is None:
+            kill = Event()
+        self._kill = kill  # Loop condition to exit and kill the thread
         super(PausableThread, self).__init__(target=target, name=name, args=args, kwargs=kwargs,
-                                             daemon=daemon, group=group, init=init, iargs=iargs, ikwargs=ikwargs)
+                                             daemon=daemon, group=group, init=init, iargs=iargs, ikwargs=ikwargs,
+                                             alive=alive, **kwds)
+
+    @property
+    def kill(self):
+        """Return the kill threading event."""
+        return self._kill
+
+    @kill.setter
+    def kill(self, value):
+        if value is None:
+            value = Event()
+        if self._kill.is_set():
+            value.set()
+        self._kill = value
+
+    def is_killed(self):
+        """Return if the kill threading event is set."""
+        try:
+            return self._kill.is_set()
+        except (AttributeError, RuntimeError, Exception):
+            return False
 
     def is_running(self):
         """Return if the serial port is connected and alive."""
-        return not self.kill.is_set() and self.alive.is_set()
+        return not self.is_killed() and self.is_alive()
 
     is_active = is_running
 
@@ -379,6 +417,7 @@ class PausableThread(ContinuousThread):
             `daemon = True`. If you do this then the `close()` function is not guaranteed to be called.
         """
         # Resume the thread run method
+        self.kill.clear()
         super(PausableThread, self).start()
 
     def stop(self):
@@ -409,9 +448,9 @@ class PausableThread(ContinuousThread):
         # Allow threading._shutdown() to continue
         lock = self.allow_shutdown()
 
-        while not self.kill.is_set():
+        while not self.is_killed():
             self.alive.wait()  # If alive is set then it does not wait according to docs.
-            if self.kill.is_set():
+            if self.is_killed():
                 break
 
             # Run the thread method while protected in the lock state
@@ -431,7 +470,7 @@ class OperationThread(ContinuousThread):
     """
 
     def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None, group=None,
-                 init=None, iargs=None, ikwargs=None, timeout=2):
+                 init=None, iargs=None, ikwargs=None, timeout=2, alive=None, **kwds):
         """Initialize the thread object.
 
         Args:
@@ -447,12 +486,14 @@ class OperationThread(ContinuousThread):
             iargs (tuple)[None]: Positional arguments to pass into init
             ikwargs (dict)[None]: Keyword arguments to pass into init.
             timeout (int/float): Queue.get timeout.
+            alive (threading.Event)[None]: Alive event to indicate if the thread is alive.
         """
         self._operations = Queue()
         self.stop_processing = False
         self._timeout = timeout
         super(OperationThread, self).__init__(target=target, name=name, args=args, kwargs=kwargs,
-                                              daemon=daemon, group=group, init=init, iargs=iargs, ikwargs=ikwargs)
+                                              daemon=daemon, group=group, init=init, iargs=iargs, ikwargs=ikwargs,
+                                              alive=alive, **kwds)
 
     def get_timeout(self):
         """Return the queue timeout."""
@@ -490,7 +531,7 @@ class OperationThread(ContinuousThread):
         # Allow threading._shutdown() to continue
         lock = self.allow_shutdown()
 
-        while self.alive.is_set():
+        while self.is_alive():
             try:
                 # Wait for data and other arguments
                 op_args, op_kwargs = self._operations.get(timeout=self.timeout)
@@ -512,7 +553,7 @@ class OperationThread(ContinuousThread):
 
 class PeriodicThread(ContinuousThread):
     def __init__(self, interval, target=None, name=None, args=None, kwargs=None, daemon=None, group=None,
-                 init=None, iargs=None, ikwargs=None):
+                 init=None, iargs=None, ikwargs=None, alive=None, **kwds):
         """Create a thread that will run a function periodically.
 
         Args:
@@ -528,9 +569,11 @@ class PeriodicThread(ContinuousThread):
                 dictionary as keyword arguments into the target function.
             iargs (tuple)[None]: Positional arguments to pass into init
             ikwargs (dict)[None]: Keyword arguments to pass into init.
+            alive (threading.Event)[None]: Alive event to indicate if the thread is alive.
         """
         super(PeriodicThread, self).__init__(target=target, name=name, args=args, kwargs=kwargs,
-                                             daemon=daemon, group=group, init=init, iargs=iargs, ikwargs=ikwargs)
+                                             daemon=daemon, group=group, init=init, iargs=iargs, ikwargs=ikwargs,
+                                             alive=alive, **kwds)
         self.interval = interval
 
     def run(self):
