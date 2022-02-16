@@ -77,7 +77,7 @@ if __name__ == "__main__":
 
           # options to install extra requirements
           install_requires=[
-              'psutil>=5.8.0',
+              'psutil>=5.4.0',
               ],
           # extras_require={
           #     '': [''],
