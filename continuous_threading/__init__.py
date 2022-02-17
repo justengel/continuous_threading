@@ -26,7 +26,12 @@ __all__ = [
     'ProcessError', 'MpEvent', 'MpQueue', 'MpJoinableQueue', 'MpSimpleQueue',
     'is_parent_process_alive', 'mark_task_done',
     'Process', 'ContinuousProcess', 'PausableProcess', 'PeriodicProcess', 'OperationProcess',
-    'BaseCommand', 'ObjectCommand', 'ProcessCommand', 'ExecCommand', 'CommandProcess'
+    'BaseCommand', 'ObjectCommand', 'ProcessCommand', 'ExecCommand', 'CommandProcess',
+
+    # Async Support
+    'get_loop', 'call', 'call_async', 'AsyncCallbackChain',
+    'Event', 'Lock', 'Condition', 'Queue', 'QueueFull', 'QueueEmpty',
+    'AsyncTask', 'ContinuousTask',
     ]
 
 
@@ -105,3 +110,14 @@ except (ImportError, Exception):
     OperationProcess = None
     BaseCommand = ObjectCommand = ProcessCommand = ExecCommand = None
     CommandProcess = None
+
+
+# ===== Async Support =====
+try:
+    from .async_support import get_loop, call, call_async, AsyncCallbackChain, \
+        Event, Lock, Condition, Queue, QueueFull, QueueEmpty, \
+        AsyncTask, ContinuousTask
+except (ImportError, Exception):
+    get_loop = call = call_async = AsyncCallbackChain = None
+    Event = Lock = Condition = Queue = QueueFull = QueueEmpty = None
+    AsyncTask = ContinuousTask = None
