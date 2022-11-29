@@ -1,5 +1,5 @@
 name = 'continuous_threading'
-version = '2.0.5'
+version = '2.0.6'
 description = 'Library to help manage threads that run continuously for a long time.'
 url = 'https://github.com/justengel/continuous_threading'
 author = 'Justin Engel'
