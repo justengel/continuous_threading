@@ -282,7 +282,7 @@ class ContinuousThread(Thread):
     If you are using this class with inheritance override the '_run' method.
     """
     def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None, group=None,
-                 init=None, iargs=None, ikwargs=None, alive=None, **kwds):
+                 init=None, iargs=None, ikwargs=None, alive=None, cleanup=None, cargs=None, ckwargs=None, **kwds):
         """Initialize the thread object.
 
         Args:
@@ -298,11 +298,17 @@ class ContinuousThread(Thread):
             iargs (tuple)[None]: Positional arguments to pass into init
             ikwargs (dict)[None]: Keyword arguments to pass into init.
             alive (threading.Event)[None]: Alive event to indicate if the thread is alive.
+            cleanup (callable)[None]: Run this function at the end of the thread to clean up resources.
+            cargs (tuple)[None]: Positional arguments to pass into cleanup.
+            ckwargs (dict)[None]: Keyword arguments to pass into cleanup.
         """
         # Thread properties
         self.init = init
         self.iargs = iargs or tuple()
         self.ikwargs = ikwargs or dict()
+        self.cleanup = cleanup
+        self.cargs = cargs or tuple()
+        self.ckwargs = ckwargs or dict()
 
         super(ContinuousThread, self).__init__(target=target, name=name, args=args, kwargs=kwargs,
                                                daemon=daemon, group=group, alive=alive, **kwds)
@@ -348,6 +354,12 @@ class ContinuousThread(Thread):
                 self._target(*args, **kwargs)
 
         self.alive.clear()
+        self.run_cleanup()
+
+    def run_cleanup(self):
+        """Run the cleanup function at the end of the thread."""
+        if callable(self.cleanup):
+            self.cleanup(*self.cargs, **self.ckwargs)
 # end class ContinuousThread
 
 
@@ -357,7 +369,7 @@ class PausableThread(ContinuousThread):
     """
 
     def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None, group=None,
-                 init=None, iargs=None, ikwargs=None, alive=None, kill=None, **kwds):
+                 init=None, iargs=None, ikwargs=None, alive=None, kill=None, cleanup=None, cargs=None, ckwargs=None, **kwds):
         """Initialize the thread object.
 
         Args:
@@ -374,13 +386,16 @@ class PausableThread(ContinuousThread):
             ikwargs (dict)[None]: Keyword arguments to pass into init.
             alive (threading.Event)[None]: Alive event to indicate if the thread is alive.
             kill (threading.Event)[None]: Kill event to indicate that the thread should be killed and stopped.
+            cleanup (callable)[None]: Run this function at the end of the thread to clean up resources.
+            cargs (tuple)[None]: Positional arguments to pass into cleanup.
+            ckwargs (dict)[None]: Keyword arguments to pass into cleanup.
         """
         if kill is None:
             kill = Event()
         self._kill = kill  # Loop condition to exit and kill the thread
         super(PausableThread, self).__init__(target=target, name=name, args=args, kwargs=kwargs,
                                              daemon=daemon, group=group, init=init, iargs=iargs, ikwargs=ikwargs,
-                                             alive=alive, **kwds)
+                                             alive=alive, cleanup=cleanup, cargs=cargs, ckwargs=ckwargs, **kwds)
 
     @property
     def kill(self):
@@ -459,6 +474,7 @@ class PausableThread(ContinuousThread):
         # end
 
         self.alive.clear()  # The thread is no longer running
+        self.run_cleanup()
 # end class PausableThread
 
 
@@ -470,7 +486,7 @@ class OperationThread(ContinuousThread):
     """
 
     def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None, group=None,
-                 init=None, iargs=None, ikwargs=None, timeout=2, alive=None, **kwds):
+                 init=None, iargs=None, ikwargs=None, timeout=2, alive=None, cleanup=None, cargs=None, ckwargs=None, **kwds):
         """Initialize the thread object.
 
         Args:
@@ -487,13 +503,16 @@ class OperationThread(ContinuousThread):
             ikwargs (dict)[None]: Keyword arguments to pass into init.
             timeout (int/float): Queue.get timeout.
             alive (threading.Event)[None]: Alive event to indicate if the thread is alive.
+            cleanup (callable)[None]: Run this function at the end of the thread to clean up resources.
+            cargs (tuple)[None]: Positional arguments to pass into cleanup.
+            ckwargs (dict)[None]: Keyword arguments to pass into cleanup.
         """
         self._operations = Queue()
         self.stop_processing = False
         self._timeout = timeout
         super(OperationThread, self).__init__(target=target, name=name, args=args, kwargs=kwargs,
                                               daemon=daemon, group=group, init=init, iargs=iargs, ikwargs=ikwargs,
-                                              alive=alive, **kwds)
+                                              alive=alive, cleanup=cleanup, cargs=cargs, ckwargs=ckwargs, **kwds)
 
     def get_timeout(self):
         """Return the queue timeout."""
@@ -548,12 +567,13 @@ class OperationThread(ContinuousThread):
                 continue
 
         self.alive.clear()  # The thread is no longer running
+        self.run_cleanup()
 # end class OperationThread
 
 
 class PeriodicThread(ContinuousThread):
     def __init__(self, interval, target=None, name=None, args=None, kwargs=None, daemon=None, group=None,
-                 init=None, iargs=None, ikwargs=None, alive=None, **kwds):
+                 init=None, iargs=None, ikwargs=None, alive=None, cleanup=None, cargs=None, ckwargs=None, **kwds):
         """Create a thread that will run a function periodically.
 
         Args:
@@ -570,10 +590,13 @@ class PeriodicThread(ContinuousThread):
             iargs (tuple)[None]: Positional arguments to pass into init
             ikwargs (dict)[None]: Keyword arguments to pass into init.
             alive (threading.Event)[None]: Alive event to indicate if the thread is alive.
+            cleanup (callable)[None]: Run this function at the end of the thread to clean up resources.
+            cargs (tuple)[None]: Positional arguments to pass into cleanup.
+            ckwargs (dict)[None]: Keyword arguments to pass into cleanup.
         """
         super(PeriodicThread, self).__init__(target=target, name=name, args=args, kwargs=kwargs,
                                              daemon=daemon, group=group, init=init, iargs=iargs, ikwargs=ikwargs,
-                                             alive=alive, **kwds)
+                                             alive=alive, cleanup=cleanup, cargs=cargs, ckwargs=ckwargs, **kwds)
         self.interval = interval
 
     def run(self):
@@ -595,3 +618,6 @@ class PeriodicThread(ContinuousThread):
             except ValueError:
                 pass  # sleep time less than 0
             start = time.time()
+        
+        self.alive.clear()  # The thread is no longer running
+        self.run_cleanup()

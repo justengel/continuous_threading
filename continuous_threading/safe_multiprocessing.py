@@ -207,7 +207,7 @@ class ContinuousProcess(Process):
     'run' method.
     """
     def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None, group=None,
-                 init=None, iargs=None, ikwargs=None, alive=None, **kwds):
+                 init=None, iargs=None, ikwargs=None, alive=None, cleanup=None, cargs=None, ckwargs=None, **kwds):
         """Initialize the new process object.
 
         Args:
@@ -222,12 +222,18 @@ class ContinuousProcess(Process):
                 dictionary as keyword arguments into the target function.
             iargs (tuple)[None]: Positional arguments to pass into init
             ikwargs (dict)[None]: Keyword arguments to pass into init.
-            alive (mp.Event)[None]: Alive event to indicate if the thread is alive.
+            alive (mp.Event)[None]: Alive event to indicate if the process is alive.
+            cleanup (callable)[None]: Run this function at the end of the process to clean up resources.
+            cargs (tuple)[None]: Positional arguments to pass into cleanup.
+            ckwargs (dict)[None]: Keyword arguments to pass into cleanup.
         """
         # Thread properties
         self.init = init
         self.iargs = iargs or tuple()
         self.ikwargs = ikwargs or dict()
+        self.cleanup = cleanup
+        self.cargs = cargs or tuple()
+        self.ckwargs = ckwargs or dict()
 
         super(ContinuousProcess, self).__init__(target=target, name=name, args=args, kwargs=kwargs,
                                                 daemon=daemon, group=group, alive=alive, **kwds)
@@ -263,15 +269,19 @@ class ContinuousProcess(Process):
         return args, kwargs
 
     def run(self):
-        """The thread will loop through running the set _target method (default _run()). This
-        method can be paused and restarted.
-        """
+        """The thread will loop through running the set _target method (default _run())."""
         args, kwargs = self.run_init()
         while self.should_run():
             # Run the thread method
             self._target(*args, **kwargs)
 
         self.alive.clear()
+        self.run_cleanup()
+
+    def run_cleanup(self):
+        """Run the cleanup function at the end of the process."""
+        if callable(self.cleanup):
+            self.cleanup(*self.cargs, **self.ckwargs)
 
 
 class PausableProcess(ContinuousProcess):
@@ -281,7 +291,7 @@ class PausableProcess(ContinuousProcess):
     """
 
     def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None, group=None,
-                 init=None, iargs=None, ikwargs=None, alive=None, kill=None, **kwds):
+                 init=None, iargs=None, ikwargs=None, alive=None, kill=None, cleanup=None, cargs=None, ckwargs=None, **kwds):
         """Initialize the new process object.
 
         Args:
@@ -296,15 +306,18 @@ class PausableProcess(ContinuousProcess):
                 dictionary as keyword arguments into the target function.
             iargs (tuple)[None]: Positional arguments to pass into init
             ikwargs (dict)[None]: Keyword arguments to pass into init.
-            alive (mp.Event)[None]: Alive event to indicate if the thread is alive.
-            kill (mp.Event)[None]: Kill event to indicate that the thread should be killed and stopped.
+            alive (mp.Event)[None]: Alive event to indicate if the process is alive.
+            kill (mp.Event)[None]: Kill event to indicate that the process should be killed and stopped.
+            cleanup (callable)[None]: Run this function at the end of the process to clean up resources.
+            cargs (tuple)[None]: Positional arguments to pass into cleanup.
+            ckwargs (dict)[None]: Keyword arguments to pass into cleanup.
         """
         if kill is None:
             kill = mp.Event()
         self._kill = kill  # Loop condition to exit and kill the thread
         super(PausableProcess, self).__init__(target=target, name=name, args=args, kwargs=kwargs,
                                               daemon=daemon, group=group, init=init, iargs=iargs, ikwargs=ikwargs,
-                                              alive=alive, **kwds)
+                                              alive=alive, cleanup=cleanup, cargs=cargs, ckwargs=ckwargs, **kwds)
 
     @property
     def kill(self):
@@ -381,12 +394,13 @@ class PausableProcess(ContinuousProcess):
         # end
 
         self.alive.clear()  # The thread is no longer running
+        self.run_cleanup()
 
 
 class PeriodicProcess(ContinuousProcess):
     """This process class is for running a function continuously at a given interval."""
     def __init__(self, interval, target=None, name=None, args=None, kwargs=None, daemon=None, group=None,
-                 init=None, iargs=None, ikwargs=None, alive=None, **kwds):
+                 init=None, iargs=None, ikwargs=None, alive=None, cleanup=None, cargs=None, ckwargs=None, **kwds):
         """Initialize the new process object.
 
         Args:
@@ -402,12 +416,15 @@ class PeriodicProcess(ContinuousProcess):
                 dictionary as keyword arguments into the target function.
             iargs (tuple)[None]: Positional arguments to pass into init
             ikwargs (dict)[None]: Keyword arguments to pass into init.
-            alive (mp.Event)[None]: Alive event to indicate if the thread is alive.
+            alive (mp.Event)[None]: Alive event to indicate if the process is alive.
+            cleanup (callable)[None]: Run this function at the end of the process to clean up resources.
+            cargs (tuple)[None]: Positional arguments to pass into cleanup.
+            ckwargs (dict)[None]: Keyword arguments to pass into cleanup.
         """
         self.interval = interval
         super(PeriodicProcess, self).__init__(target=target, name=name, args=args, kwargs=kwargs,
                                               daemon=daemon, group=group, init=init, iargs=iargs, ikwargs=ikwargs,
-                                              alive=alive, **kwds)
+                                              alive=alive, cleanup=cleanup, cargs=cargs, ckwargs=ckwargs, **kwds)
 
     def run(self):
         """The thread will loop through running the set _target method (default _run()). This
@@ -426,6 +443,7 @@ class PeriodicProcess(ContinuousProcess):
                 pass  # sleep time less than 0
 
         self.alive.clear()
+        self.run_cleanup()
 
 
 class OperationProcess(ContinuousProcess):
@@ -435,7 +453,7 @@ class OperationProcess(ContinuousProcess):
     """
 
     def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None, group=None,
-                 init=None, iargs=None, ikwargs=None, alive=None, **kwds):
+                 init=None, iargs=None, ikwargs=None, alive=None, cleanup=None, cargs=None, ckwargs=None, **kwds):
         """Initialize the new process object.
 
         Args:
@@ -450,14 +468,17 @@ class OperationProcess(ContinuousProcess):
                 dictionary as keyword arguments into the target function.
             iargs (tuple)[None]: Positional arguments to pass into init
             ikwargs (dict)[None]: Keyword arguments to pass into init.
-            alive (mp.Event)[None]: Alive event to indicate if the thread is alive.
+            alive (mp.Event)[None]: Alive event to indicate if the process is alive.
+            cleanup (callable)[None]: Run this function at the end of the process to clean up resources.
+            cargs (tuple)[None]: Positional arguments to pass into cleanup.
+            ckwargs (dict)[None]: Keyword arguments to pass into cleanup.
         """
         self._operations = mp.Queue()
         self._stop_processing = mp.Event()
         self._timeout = 2  # Timeout in seconds
         super(OperationProcess, self).__init__(target=target, name=name, args=args, kwargs=kwargs,
                                                daemon=daemon, group=group, init=init, iargs=iargs, ikwargs=ikwargs,
-                                               alive=alive, **kwds)
+                                               alive=alive, cleanup=cleanup, cargs=cargs, ckwargs=ckwargs, **kwds)
 
     @property
     def stop_processing(self):
@@ -529,6 +550,7 @@ class OperationProcess(ContinuousProcess):
             self._run_once(*args, **kwargs)
 
         self.alive.clear()  # The thread is no longer running
+        self.run_cleanup()
 
     def _run_once(self, *args, **kwargs):
         """Try to get data from the queue and run the operation."""
@@ -588,7 +610,7 @@ class CommandProcess(ContinuousProcess):
     ExecCommand = ExecCommand
 
     def __init__(self, target=None, name=None, args=None, kwargs=None, daemon=None, group=None,
-                 init=None, iargs=None, ikwargs=None, alive=None, **kwds):
+                 init=None, iargs=None, ikwargs=None, alive=None, cleanup=None, cargs=None, ckwargs=None, **kwds):
         """Initialize the new process object.
 
         Args:
@@ -603,14 +625,17 @@ class CommandProcess(ContinuousProcess):
                 dictionary as keyword arguments into the target function.
             iargs (tuple)[None]: Positional arguments to pass into init
             ikwargs (dict)[None]: Keyword arguments to pass into init.
-            alive (mp.Event)[None]: Alive event to indicate if the thread is alive.
+            alive (mp.Event)[None]: Alive event to indicate if the process is alive.
+            cleanup (callable)[None]: Run this function at the end of the process to clean up resources.
+            cargs (tuple)[None]: Positional arguments to pass into cleanup.
+            ckwargs (dict)[None]: Keyword arguments to pass into cleanup.
         """
         self._obj_cache = {}
         self._cmd_queue = mp.Queue()
         self._timeout = 2  # Timeout in seconds
         super(CommandProcess, self).__init__(target=None, name=name, args=args, kwargs=kwargs,
                                              daemon=daemon, group=group, init=init, iargs=iargs, ikwargs=ikwargs,
-                                             alive=alive, **kwds)
+                                             alive=alive, cleanup=cleanup, cargs=cargs, ckwargs=ckwargs, **kwds)
 
         # Manually set the target/object to trigger the cache.
         if target is not None:
@@ -713,6 +738,7 @@ class CommandProcess(ContinuousProcess):
             self._run_once(*args, **kwargs)
 
         self.alive.clear()  # The thread is no longer running
+        self.run_cleanup()
 
     def _run_once(self, *args, **kwargs):
         """Try to get data from the queue and run the operation."""
